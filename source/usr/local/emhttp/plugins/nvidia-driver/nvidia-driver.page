@@ -1,0 +1,190 @@
+Menu="Utilities"
+Title="Nvidia Driver"
+Icon="nvidia-driver.png"
+---
+<?php
+//Get selected driver version
+$selected_v = shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_selected_version");
+
+//Update driver versions and create file '/tmp/nvidia_driver'
+shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh update');
+
+//Get latest version
+$latest_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_latest_version');
+
+//Get branch versions
+$latest_prb_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_prb');
+$latest_nfb_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nfb');
+$latest_nos_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nos');
+
+//Get driver license
+$module_license = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_license');
+
+//Get current installed driver version
+$installed_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_installed_version');
+
+//Read driver versions from '/tmp/nvidia_driver'
+error_reporting(E_ALL);
+ini_set('display_errors',1);
+
+//Get value from update check
+$update_check = shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh update_check");
+
+$filename = "/tmp/nvidia_driver";
+$eachlines = file($filename, FILE_IGNORE_NEW_LINES);
+
+//Get installed driver version
+$cur_drv_v = shell_exec("nvidia-smi | grep \"Driver Version\" | cut -d ' ' -f3");
+if (empty($cur_drv_v)) {
+  $cur_drv_v = shell_exec("nvidia-settings --help | grep -oP '(?<=version )[\d\.]+'");
+  if (empty($cur_drv_v)) {
+    $cur_drv_v = "ERROR: No driver found!";
+  }
+}
+
+//Get Unraid driver version
+$unraid_version = parse_ini_file('/etc/unraid-version');
+?>
+
+<script>
+    //Don't execute commands again if page is refreshed
+    if ( window.history.replaceState ) {
+        window.history.replaceState( null, null, window.location.href );
+    }
+</script>
+
+<script>
+function changeVersion(form) {
+    var package = form.drv_version.value;
+    openBox("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh&arg1=update_version&arg2="+package,"Downloading Package",600,800,true);
+    return false;
+    }
+</script>
+
+<style>
+table tbody td {
+    line-height:normal
+}
+</style>
+
+<h1 style="text-align: center;"><a href="https://forums.unraid.net/topic/98978-plugin-nvidia-driver/" target="_blank" rel="noopener"><span style="color: green;">Nvidia Driver Package</span></a></h1>
+<br/>
+
+<div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start;">
+
+<div style="width: 47%; min-width: 700px; max-width: 1260px; flex-wrap: wrap; margin: 10px;">
+<p><b><font size="+1">Nvidia Info:</font></b></p>
+            <p>Nvidia Driver Version: 
+            <b style="color:green"><?php echo $cur_drv_v; ?></b></p>
+        <? if (isset($module_license ) === true && trim($module_license ) === 'OPENSOURCE'): ?>
+            <p>Open Source Kernel Module: 
+            <b style="color:blue">Yes</b></p>
+        <? elseif (isset($module_license ) === true && trim($module_license ) === 'PROPRIETARY'): ?>
+            <p>Open Source Kernel Module: 
+            <b style="color:green">No</b></p>
+        <? endif; ?>
+            <p>Installed GPU(s):<br/>
+            <b style="color:green"><?=`nvidia-smi --query-gpu=index,name,gpu_bus_id,uuid --format=csv,noheader | tr "," "\n" | sed 's/^[ \t]*//' | sed -e s/00000000://g | sed '0~4G' | sed 's/^[0-9]$/&:/' | sed 's/$/<br>/'`?></b></p><br/>
+        </tr>
+    </table>
+    <? if (isset($selected_v ) === true && trim($selected_v ) === 'latest' || trim($selected_v ) === 'latest_prb' || trim($selected_v ) === 'latest_nfb'): ?>
+		<tr><td>
+		<b><font size="+1">Driver Update Notification</font></b>
+		</td></tr>
+		<tr><td>
+		<form id="s" method="post" >
+		<select name="updata_check_selected" required>
+                    <option <?php echo ( $update_check == "true") ? 'selected="selected"' : '' ?> value="true"> Enabled</option>
+                    <option <?php echo ( $update_check == "false") ? 'selected="selected"' : '' ?> value="false"> Disabled</option>
+                </select>
+                <input type="submit" name="changeUPDcheck" value="Change">
+                </form>
+                </td>
+                <tr><td><p>The Driver Update Notification, checks once a day (between 8 am and 10 am) whether a new version of the selected branch is available and, if necessary, downloads the new driver and sends a notification.</p>
+			<p><b>The server needs to be restarted in order to install the new driver.</b></p><br/>
+		</tr></td>
+	  </table>
+    <? endif; ?>
+</div>
+
+<div style="width: 47%; min-width: 700px; max-width: 1260px; margin: 10px;">
+<p><b><font size="+1">Select preferred driver version:</font></b></p>
+<br/>
+    <table>
+            <form id="s" method="post" >
+              <tr>
+                <td><b>Latest Versions:</b></td>
+                <td>
+                    <p><input type="radio" name="drv_version" value="latest" <?php echo ( $selected_v == "latest") ? 'checked="checked"' : ''; ?><font><b>latest</font>:</b> <?php echo "v$latest_v"; ?> </p>
+                    <? if (isset($latest_prb_v ) === true && trim($latest_prb_v ) !== ''): ?>
+                    <p><input type="radio" name="drv_version" value="latest_prb" <?php echo ( $selected_v == "latest_prb") ? 'checked="checked"' : ''; ?><b><font color = "green"><b>Production Branch</font>:</b>  <?php echo "v$latest_prb_v"; ?> </p>
+                    <? else: ?>
+                    <p><b><font color = "green">Production Branch</font>:</b> <i>Not found for this Unraid version!</i></p>
+                    <? endif; ?>
+                    <? if (isset($latest_nfb_v ) === true && trim($latest_nfb_v ) !== ''): ?>
+                    <p><input type="radio" name="drv_version" value="latest_nfb" <?php echo ( $selected_v == "latest_nfb") ? 'checked="checked"' : ''; ?><b><font color = "tomato"><b>New Feature Branch</font>:</b> <?php echo "v$latest_nfb_v"; ?></p>
+                    <? else: ?>
+                    <p><b><font color = "tomato">New Feature Branch</font>:</b> <i>Not found for this Unraid version!</i></p>
+                    <? endif; ?>
+                    <? if (isset($latest_nos_v ) === true && trim($latest_nos_v ) !== ''): ?>
+                    <p><input type="radio" name="drv_version" value="latest_nos" <?php echo ( $selected_v == "latest_nos") ? 'checked="checked"' : ''; ?><b><font color = "blue"><b>Open Source Driver</font>:</b> <?php echo "v$latest_nos_v"; ?><? echo (version_compare($unraid_version['version'], '7.0.0-rc.1.1', '<')) ? '<em><b> - Please see readme below!</b></em>' : ''; ?></p>
+                    <? else: ?>
+                    <p><b><font color = "blue">Open Source Driver</font>:</b> <i>Not found for this Unraid version!</i></p>
+                    <? endif; ?>
+                </td>
+              </tr>
+              <tr>
+                <td><b>Available Versions:</b></td><td>
+                    <?php
+                    krsort($eachlines);
+                    foreach($eachlines as $lines){
+                    $arr = explode(" ", $lines);
+                    $lines2 = implode(" ", $arr);
+					          ?>
+                    <p>
+						<input type="radio" name="drv_version" value="<?php echo $lines2;?>" <?php echo ( $selected_v == $lines2) ? 'checked="checked"' : '' ?>/> 
+						v<?php echo $lines2;?>
+					          </p>
+                    <?php
+					          }
+                    ?>
+                </td>
+              <tr>
+                <td>
+                </td>
+                <td>
+                    <input type="button" value="Update & Download" onclick="changeVersion(this.form)">
+                </td>
+            </tr>
+            </form>
+            </table>
+	<table>
+		<p style="text-align: left; font-weight: bold;">ATTENTION: If you set the version to 'latest', 'Production Branch' or 'New Feature Branch' you either have to enable the Driver Update Notification (this will download the driver automatically) or if you disabled the Driver Update Notification you manually have to click the button "Update & Download" to download a newer driver.<br>Please keep in mind, to install a newer driver you have to reboot your server.</p>
+		<br>
+		<p><b><font size+1> Latest versions:</font></b></p>
+		<ul>
+		  <p>
+		  <li><b>latest</b> - will always download the latest driver version available regardless of the branch</li><br>
+		  <li><b>Production Branch</b>  - This is the long lifecycle (i.e., multiple releases in a branch over a single year period) driver branch providing ISV Certification, optimal stability and performance, and regular security updates for NVIDIA RTX/Quadro professional customers. This driver was previously named, Optimal Driver for Enterprise (ODE), and is most commonly deployed in production systems at enterprises.</li><br>
+		  <li><b>New Feature Branch</b>  - This is a short lived branch driver (i.e., 1-2 releases per branch only) where new NVIDIA RTX/Quadro features are introduced and made available between Production Branch releases. New Feature Branch drivers, previously named, Quadro New Feature (QNF), typically provide support for new operating systems, third party hardware, and game engines.</li><br>
+		  <li><b>Open Source Driver</b>  - This package includes the Open Source Kernel modules and the libraries/execuatables from the proprietary Nvidia driver package.
+		  <br><b>Supported GPUs:</b> This driver package only supports Turing based cards and newer!
+		  <?php
+            if(version_compare($unraid_version['version'], '7.0.0-rc.1.1', '<')) {
+              echo '<br><b><font color = "red">ATTENTION:</font></b> If you want to use the Open Source driver with GeForce and/or Workstation cards you have to create the file "<code>/boot/config/modprobe.d/nvidia.conf</code>" on your USB boot device with the contents, before you reboot your server:<br><code>options nvidia NVreg_OpenRmEnableUnsupportedGpus=1</code><br><p><em>For more information see <a href="https://us.download.nvidia.com/XFree86/Linux-x86_64/515.76/README/kernel_open.html">here</a>.</em></p>';
+            }
+		  ?>
+		  </li></p></ul>
+		  <br/>
+	</table>
+</div>
+
+</div>
+
+<?php
+if(isset($_POST['changeUPDcheck'])) {
+$updata_check_selected = $_POST["updata_check_selected"];
+shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh change_update_check ".escapeshellarg($updata_check_selected)."");
+echo '<script>parent.window.location.reload();</script>';
+}
+?>
