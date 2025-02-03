@@ -12,7 +12,7 @@
   <!ENTITY packages  "/boot/config/plugins/&name;/packages">
 ]>
 
-<PLUGIN  name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.9.0-beta31" support="https://forums.unraid.net/topic/98978-plugin-nvidia-driver/">
+<PLUGIN  name="&name;" author="ich777" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.9.0-beta31" support="https://forums.unraid.net/topic/98978-plugin-nvidia-driver/">
 
 <CHANGES>
 
