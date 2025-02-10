@@ -209,6 +209,7 @@ if wget -q -nc --show-progress --progress=bar:force:noscroll -O "&packages;/${KE
     echo
     echo "-----ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR------"
     echo "--------------------------------CHECKSUM ERROR!---------------------------------"
+    removepkg &name;-&version;
     rm -rf &plugin; &emhttp;
     exit 1
   fi
@@ -222,6 +223,7 @@ if wget -q -nc --show-progress --progress=bar:force:noscroll -O "&packages;/${KE
 else
   echo
   echo "--------------Can't download Nvidia ${OS}Driver Package v$(echo $LAT_PACKAGE | cut -d '-' -f2)-----------------"
+  removepkg &name;-&version;
   rm -rf &plugin; &emhttp;
   exit 1
 fi
@@ -244,6 +246,7 @@ if [ -z "$LAT_PACKAGE" ]; then
     echo
     echo "-----ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR------"
     echo "---Can't get latest Nvidia ${OS}driver version and found no installed local driver---"
+    removepkg &name;-&version;
     rm -rf &plugin; &emhttp;
     exit 1
   else
@@ -263,6 +266,7 @@ if ! ls -1 &packages;/${KERNEL_V%%-*}/ | grep -q "${PACKAGE}" ; then
     echo "There are no GitHub API calls left for your IP."
     echo "The limit will be reset at: ${RESET}"
     echo
+    removepkg &name;-&version;
     rm -rf &plugin; &emhttp;
     exit 1
   fi
