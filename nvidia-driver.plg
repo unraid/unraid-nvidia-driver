@@ -2,11 +2,11 @@
 <!DOCTYPE PLUGIN [
   <!ENTITY name      "nvidia-driver">
   <!ENTITY author    "unraid">
-  <!ENTITY version   "2025.02.03">
+  <!ENTITY version   "2025.02.10">
   <!ENTITY launch    "Settings/nvidia-driver">
   <!ENTITY gitURL    "https://github.com/&author;/unraid-&name;/raw/master">
   <!ENTITY pluginURL "&gitURL;/&name;.plg">
-  <!ENTITY md5       "fbdaa1ed52a2ade55e04ad281bb096b8">
+  <!ENTITY md5       "b62f7c2ebb04fd81dacdc5cbb7e9fad2">
   <!ENTITY plugin    "/boot/config/plugins/&name;">
   <!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
   <!ENTITY packages  "/boot/config/plugins/&name;/packages">
@@ -15,6 +15,10 @@
 <PLUGIN  name="&name;" author="limetech" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.9.0-beta31" support="https://forums.unraid.net/topic/98978-plugin-nvidia-driver/">
 
 <CHANGES>
+
+###2025.02.10
+- Add check for GitHub API rate limit on plugin installation or on boot if no driver is found for running Kernel version
+- Add check to download routine for GitHub API rate limit
 
 ###2025.02.03
 - Switch repo from ich777 to unraid
@@ -251,6 +255,16 @@ fi
 #Check if driver is already downloaded
 check() {
 if ! ls -1 &packages;/${KERNEL_V%%-*}/ | grep -q "${PACKAGE}" ; then
+  # Check GitHub API call rate limit
+  RATE_LIMIT="$(wget -qO- -T 10 https://api.github.com/rate_limit | jq -r '.rate')"
+  if [ "$(echo "${RATE_LIMIT}" | jq -r '.remaining')" == "0" ]; then
+    RESET="$(date -d @"$(echo "${RATE_LIMIT}" | jq -r '.reset')" "+%Y-%m-%d %H:%M:%S")"
+    echo "-----ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR------"
+    echo "   There are no GitHub API calls left for your IP. The limit will be reset on:"
+    echo -e "${RESET}\n"
+    rm -rf &plugin; &emhttp;
+    exit 1
+  fi
   get_version
   echo
   echo "+=============================================================================="
