@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Check GitHub API call rate limit
+RATE_LIMIT="$(wget -qO- -T 10 https://api.github.com/rate_limit | jq -r '.rate')"
+if [ "$(echo "${RATE_LIMIT}" | jq -r '.remaining')" == "0" ]; then
+  RESET="$(date -d @"$(echo "${RATE_LIMIT}" | jq -r '.reset')" "+%Y-%m-%d %H:%M:%S")"
+  echo "-----ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR - ERROR------"
+  echo "There are no GitHub API calls left for your IP."
+  echo "The limit will be reset at: <b>${RESET}</b>"
+  exit 1
+fi
+
 # Define Variables
 export KERNEL_V="$(uname -r)"
 export SET_DRV_V="$(grep "driver_version" "/boot/config/plugins/nvidia-driver/settings.cfg" | cut -d '=' -f2)"
