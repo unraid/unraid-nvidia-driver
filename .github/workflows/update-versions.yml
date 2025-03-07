@@ -1,0 +1,103 @@
+name: Update Nvidia Driver versions
+
+on:
+  # Set schedule to run every 4 hours
+  #schedule:
+  #  - cron: '0 */4 * * *'
+
+  # Allow to trigger action manually
+  workflow_dispatch:
+
+jobs:
+  update-branches:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 1
+
+    - name: Install dependencies
+      run: sudo apt-get -y install jq tidy wget
+
+    - name: Grab Nvidia Driver versions and update versions.json
+      run: |
+        # Get driver versions from json
+        CUR_PRB="$(jq -r '.branches.production.current' versions.json)"
+        CUR_NFB="$(jq -r '.branches.newfeature.current' versions.json)"
+        CUR_BETA="$(jq -r '.branches.beta.current' versions.json)"
+        CUR_LEGACY="$(jq -r '.branches.legacy.current' versions.json)"
+
+        # Get driver versions
+        RAW_DATA="$(wget -qO- https://www.nvidia.com/en-us/drivers/unix/ | tidy -quiet -wrap 4096 2>/dev/null | grep -A8 "Linux x86_64/AMD64/EM64T")"
+        PRB="$(echo "${RAW_DATA}" | grep -i "Latest Production Branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+        NFB="$(echo "${RAW_DATA}" | grep -i "Latest New Feature Branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+        BETA="$(echo "${RAW_DATA}" | grep -i "Latest Beta" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+        LEGACY="$(echo "${RAW_DATA}" | grep -i "Latest Legacy" | grep "(4" | head -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+
+        # Fall back to alternative URL to get versions
+        if [ -z "${RAW_DATA}" ]; then
+          RAW_DATA="$(wget -qO- https://forums.developer.nvidia.com/t/current-graphics-driver-releases/28500 | tidy -quiet -wrap 4096 2>/dev/null || true)"
+          PRB="$(echo "${RAW_DATA}" | grep -i "^Current production branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+          NFB="$(echo "${RAW_DATA}" | grep -i "^Current new feature branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+          BETA="$(echo "${RAW_DATA}" | grep -i "^Current beta" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+          LEGACY="$(echo "${RAW_DATA}" | grep -i -A1 '>Legacy releases' | tail -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+        fi
+
+        # Exit if no versions are returned 
+        if [ -z "${RAW_DATA}" ]; then
+          exit 1
+        fi
+
+        # Make sure jq command is valid even if nothing changed
+        JQ_COMMAND='.'
+
+        # Check if new versions are version numbers and if they are newer
+        if echo "${PRB}" | grep -qE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' ; then
+          if [ "${CUR_PRB}" != "${PRB}" ]; then
+            JQ_COMMAND+=" | .branches.production.current = \$prb_current"
+            JQ_COMMAND+=" | .branches.production.last_prb = \$last_prb"
+          fi
+        fi
+        if echo "${NFB}" | grep -qE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' ; then
+          if [ "${CUR_NFB}" != "${NFB}" ]; then
+            JQ_COMMAND+=" | .branches.newfeature.current = \$nfb_current"
+            JQ_COMMAND+=" | .branches.newfeature.last_nfb = \$last_nfb"
+          fi
+        fi
+        if echo "${BETA}" | grep -qE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' ; then
+          if [ "${CUR_BETA}" != "${BETA}" ]; then
+            JQ_COMMAND+=" | .branches.beta.current = \$beta"
+          fi
+        fi
+        if echo "${LEGACY}" | grep -qE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' ; then
+          if [ "${CUR_LEGACY}" != "${LEGACY}" ]; then
+            JQ_COMMAND+=" | .branches.legacy.current = \$legacy"
+          fi
+        fi
+
+        # Get current epoch
+        CURRENT_TIME="$(date +%s)"
+        JQ_COMMAND+=" | .updated = \$updated"
+
+        # Execute jq command
+        jq --arg prb_current "$PRB" \
+           --arg last_prb "$CUR_PRB" \
+           --arg nfb_current "$NFB" \
+           --arg last_nfb "$CUR_NFB" \
+           --arg beta "$BETA" \
+           --arg legacy "$LEGACY" \
+           --argjson updated "$CURRENT_TIME" \
+          "$JQ_COMMAND" versions.json > tmp.json && mv tmp.json versions.json
+
+    - name: Commit and push changes
+      if: success()
+      run: |
+        git config user.name 'github-actions[bot]'
+        git config user.email 'github-actions[bot]@users.noreply.github.com'
+        git add versions.json
+        git commit -m "Update versions"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
