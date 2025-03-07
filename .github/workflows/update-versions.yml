@@ -2,8 +2,8 @@ name: Update Nvidia Driver versions
 
 on:
   # Set schedule to run every 4 hours
-  #schedule:
-  #  - cron: '0 */4 * * *'
+  schedule:
+    - cron: '0 */4 * * *'
 
   # Allow to trigger action manually
   workflow_dispatch:
