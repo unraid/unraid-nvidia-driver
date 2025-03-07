@@ -1,19 +1,19 @@
 {
   "branches": {
     "production": {
-      "current": "550.144.03",
-      "last_prb": null
+      "current": "570.124.04",
+      "last_prb": "550.144.03"
     },
     "newfeature": {
-      "current": "560.35.03",
-      "last_nfb": null
+      "current": "565.77",
+      "last_nfb": "560.35.03"
     },
     "beta": {
-      "current": null
+      "current": "570.86.16"
     },
     "legacy": {
-      "current": null
+      "current": "470.256.02"
     }
   },
-  "updated": null
+  "updated": 1741383097
 }
