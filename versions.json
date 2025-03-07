@@ -1,0 +1,19 @@
+{
+  "branches": {
+    "production": {
+      "current": "550.144.03",
+      "last_prb": null
+    },
+    "newfeature": {
+      "current": "560.35.03",
+      "last_nfb": null
+    },
+    "beta": {
+      "current": null
+    },
+    "legacy": {
+      "current": null
+    }
+  },
+  "updated": null
+}
