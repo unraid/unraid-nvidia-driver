@@ -50,6 +50,16 @@ jobs:
           exit 1
         fi
 
+        #Get latest containertoolkit and libnvida versions
+        CONTAINER_TOOLKIT="$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s https://api.github.com/repos/ich777/nvidia-container-toolkit/releases/latest | jq -r '.tag_name')"
+        LIBNVIDIA="$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s https://api.github.com/repos/ich777/libnvidia-container/releases/latest | jq -r '.tag_name')"
+        if echo "${CONTAINER_TOOLKIT}" | grep -qE '^\b[0-9]+(\.[0-9]+)*\b$'; then
+          JQ_COMMAND+=" | .runtimes.containertoolkit.current = \$containertoolkit"
+        fi
+        if echo "${LIBNVIDIA}" | grep -qE '^\b[0-9]+(\.[0-9]+)*\b$'; then
+          JQ_COMMAND+=" | .runtimes.libnvidia.current = \$libnvidia"
+        fi
+
         # Make sure jq command is valid even if nothing changed
         JQ_COMMAND='.'
 
@@ -88,6 +98,8 @@ jobs:
            --arg last_nfb "$CUR_NFB" \
            --arg beta "$BETA" \
            --arg legacy "$LEGACY" \
+           --arg containertoolkit "$CONTAINER_TOOLKIT" \
+           --arg libnvidia "$LIBNVIDIA \
            --argjson updated "$CURRENT_TIME" \
           "$JQ_COMMAND" versions.json > tmp.json && mv tmp.json versions.json
 
