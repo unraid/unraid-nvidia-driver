@@ -45,19 +45,13 @@ jobs:
           LEGACY="$(echo "${RAW_DATA}" | grep -i -A1 '>Legacy releases' | tail -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
         fi
 
-        # Exit if no versions are returned 
-        if [ -z "${RAW_DATA}" ]; then
-          exit 1
-        fi
-
         #Get latest containertoolkit and libnvida versions
         CONTAINER_TOOLKIT="$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s https://api.github.com/repos/ich777/nvidia-container-toolkit/releases/latest | jq -r '.tag_name')"
         LIBNVIDIA="$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s https://api.github.com/repos/ich777/libnvidia-container/releases/latest | jq -r '.tag_name')"
-        if echo "${CONTAINER_TOOLKIT}" | grep -qE '^\b[0-9]+(\.[0-9]+)*\b$'; then
-          JQ_COMMAND+=" | .runtimes.containertoolkit.current = \$containertoolkit"
-        fi
-        if echo "${LIBNVIDIA}" | grep -qE '^\b[0-9]+(\.[0-9]+)*\b$'; then
-          JQ_COMMAND+=" | .runtimes.libnvidia.current = \$libnvidia"
+
+        # Exit if no versions are returned 
+        if [ -z "${RAW_DATA}" ]; then
+          exit 1
         fi
 
         # Make sure jq command is valid even if nothing changed
@@ -85,6 +79,12 @@ jobs:
           if [ "${CUR_LEGACY}" != "${LEGACY}" ]; then
             JQ_COMMAND+=" | .branches.legacy.current = \$legacy"
           fi
+        fi
+        if echo "${CONTAINER_TOOLKIT}" | grep -qE '^\b[0-9]+(\.[0-9]+)*\b$'; then
+          JQ_COMMAND+=" | .runtimes.containertoolkit.current = \$containertoolkit"
+        fi
+        if echo "${LIBNVIDIA}" | grep -qE '^\b[0-9]+(\.[0-9]+)*\b$'; then
+          JQ_COMMAND+=" | .runtimes.libnvidia.current = \$libnvidia"
         fi
 
         # Get current epoch
