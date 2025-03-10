@@ -62,17 +62,22 @@ jobs:
           if [ "${CUR_PRB}" != "${PRB}" ]; then
             JQ_COMMAND+=" | .branches.production.current = \$prb_current"
             JQ_COMMAND+=" | .branches.production.last_prb = \$last_prb"
+            # Trigger build
+            curl -s -X POST -L --user ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} "${{ secrets.JENKINS_URL }}?PACKAGES=nvidia-prb"
           fi
         fi
         if echo "${NFB}" | grep -qE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' ; then
           if [ "${CUR_NFB}" != "${NFB}" ]; then
             JQ_COMMAND+=" | .branches.newfeature.current = \$nfb_current"
             JQ_COMMAND+=" | .branches.newfeature.last_nfb = \$last_nfb"
+            # Trigger build
+            curl -s -X POST -L --user ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} "${{ secrets.JENKINS_URL }}?PACKAGES=nvidia-nfb"
           fi
         fi
         if echo "${BETA}" | grep -qE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' ; then
           if [ "${CUR_BETA}" != "${BETA}" ]; then
             JQ_COMMAND+=" | .branches.beta.current = \$beta"
+            curl -s -X POST -L --user ${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }} "${{ secrets.JENKINS_URL }}?PACKAGES=nvidia-beta"
           fi
         fi
         if echo "${LEGACY}" | grep -qE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' ; then
