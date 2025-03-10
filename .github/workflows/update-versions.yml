@@ -99,7 +99,7 @@ jobs:
            --arg beta "$BETA" \
            --arg legacy "$LEGACY" \
            --arg containertoolkit "$CONTAINER_TOOLKIT" \
-           --arg libnvidia "$LIBNVIDIA \
+           --arg libnvidia "$LIBNVIDIA" \
            --argjson updated "$CURRENT_TIME" \
           "$JQ_COMMAND" versions.json > tmp.json && mv tmp.json versions.json
 
