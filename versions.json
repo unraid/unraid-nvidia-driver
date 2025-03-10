@@ -15,5 +15,13 @@
       "current": "470.256.02"
     }
   },
+  "runtimes": {
+    "containertoolkit": {
+      "current": ""
+    },
+    "libnvidia": {
+      "current": ""
+    }
+  },
   "updated": 1741622810
 }
