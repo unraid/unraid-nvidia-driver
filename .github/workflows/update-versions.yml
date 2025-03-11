@@ -92,10 +92,6 @@ jobs:
           JQ_COMMAND+=" | .runtimes.libnvidia.current = \$libnvidia"
         fi
 
-        # Get current epoch
-        CURRENT_TIME="$(date +%s)"
-        JQ_COMMAND+=" | .updated = \$updated"
-
         # Execute jq command
         jq --arg prb_current "$PRB" \
            --arg last_prb "$CUR_PRB" \
@@ -105,7 +101,6 @@ jobs:
            --arg legacy "$LEGACY" \
            --arg containertoolkit "$CONTAINER_TOOLKIT" \
            --arg libnvidia "$LIBNVIDIA" \
-           --argjson updated "$CURRENT_TIME" \
           "$JQ_COMMAND" versions.json > tmp.json && mv tmp.json versions.json
 
     - name: Commit and push changes
