@@ -1,7 +1,7 @@
 {
   "branches": {
     "production": {
-      "current": "570.124.04",
+      "current": "570.124",
       "last_prb": "570.124"
     },
     "newfeature": {
@@ -22,6 +22,5 @@
     "libnvidia": {
       "current": "1.17.4"
     }
-  },
-  "updated": 1741680548
+  }
 }
