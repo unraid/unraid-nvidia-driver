@@ -104,7 +104,7 @@ jobs:
           "$JQ_COMMAND" versions.json > tmp.json && mv tmp.json versions.json
 
         # Check if commit is necessary
-        if [ "${JQ_COMMAND}" == "." ]; then
+        if [[ -z $(git status --porcelain) ]]; then
           echo "No changes, skipping commit"
           echo "COMMIT=false" >> $GITHUB_ENV
         else
