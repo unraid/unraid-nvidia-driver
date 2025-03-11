@@ -103,8 +103,16 @@ jobs:
            --arg libnvidia "$LIBNVIDIA" \
           "$JQ_COMMAND" versions.json > tmp.json && mv tmp.json versions.json
 
+        # Check if commit is necessary
+        if [ "${JQ_COMMAND}" == "." ]; then
+          echo "No changes, skipping commit"
+          echo "COMMIT=false" >> $GITHUB_ENV
+        else
+          echo "COMMIT=true" >> $GITHUB_ENV
+        fi
+
     - name: Commit and push changes
-      if: success()
+      if: env.COMMIT == 'true'
       run: |
         git config user.name 'github-actions[bot]'
         git config user.email 'github-actions[bot]@users.noreply.github.com'
