@@ -47,7 +47,7 @@ jobs:
 
         #Get latest containertoolkit and libnvida versions
         CONTAINER_TOOLKIT="$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s https://api.github.com/repos/ich777/nvidia-container-toolkit/releases/latest | jq -r '.tag_name')"
-        LIBNVIDIA="$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s https://api.github.com/repos/ich777/libnvidia-container/releases/latest | jq -r '.tag_name')"
+        LIBNVIDIA="$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s https://api.github.com/repos/unraid/libnvidia-container/releases/latest | jq -r '.tag_name')"
 
         # Exit if no versions are returned 
         if [ -z "${RAW_DATA}" ]; then
