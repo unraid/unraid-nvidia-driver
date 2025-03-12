@@ -8,13 +8,13 @@ if [ -z "${1}" ]; then
   exit 1
 fi
 
-VERSIONS="$(wget -qO- https://github.com/ich777/versions/raw/refs/heads/master/Unraid-Kernel-Helper)"
-if [ -z "${VERSIONS}" ]; then
+VERSIONS_JSON="$(wget -qO- https://raw.githubusercontent.com/unraid/unraid-nvidia-driver/refs/heads/master/versions.json)"
+if [ -z "${VERSIONS_JSON}" ]; then
   echo "ERROR: Can't get versions!"
   exit 1
 fi
-LIBNVIDIA_CONTAINER_V="$(echo "${VERSIONS}" | grep "LIBNVIDIA_CONTAINER_V" | cut -d '=' -f2 | sed 's/"//g')"
-CONTAINER_TOOLKIT_V="$(echo "${VERSIONS}" | grep "CONTAINER_TOOLKIT_V" | cut -d '=' -f2 | sed 's/"//g')"
+LIBNVIDIA_CONTAINER_V="$(echo "${VERSIONS_JSON}" | jq -r '.runtimes.libnvidia.current')"
+CONTAINER_TOOLKIT_V="$(echo "${VERSIONS_JSON}" | jq -r '.runtimes.containertoolkit.current')"
 
 nvidia_driver () {
   if [ "${2}" == "opensource" ]; then
@@ -109,13 +109,13 @@ $TARGET_V"
 
   cd ${DATA_DIR}
   if [ ! -f ${DATA_DIR}/libnvidia-container-v${LIBNVIDIA_CONTAINER_V}.tar.gz ]; then
-    wget -q -nc --show-progress --progress=bar:force:noscroll -O ${DATA_DIR}/libnvidia-container-v${LIBNVIDIA_CONTAINER_V}.tar.gz https://github.com/ich777/libnvidia-container/releases/download/${LIBNVIDIA_CONTAINER_V}/libnvidia-container-v${LIBNVIDIA_CONTAINER_V}.tar.gz
+    wget -q -nc --show-progress --progress=bar:force:noscroll -O ${DATA_DIR}/libnvidia-container-v${LIBNVIDIA_CONTAINER_V}.tar.gz https://github.com/unraid/libnvidia-container/releases/download/${LIBNVIDIA_CONTAINER_V}/libnvidia-container-v${LIBNVIDIA_CONTAINER_V}.tar.gz
   fi
   tar -C /NVIDIA -xf ${DATA_DIR}/libnvidia-container-v${LIBNVIDIA_CONTAINER_V}.tar.gz
 
   cd ${DATA_DIR}
   if [ ! -f ${DATA_DIR}/nvidia-container-toolkit-v${CONTAINER_TOOLKIT_V}.tar.gz ]; then
-    wget -q -nc --show-progress --progress=bar:force:noscroll -O ${DATA_DIR}/nvidia-container-toolkit-v${CONTAINER_TOOLKIT_V}.tar.gz https://github.com/ich777/nvidia-container-toolkit/releases/download/${CONTAINER_TOOLKIT_V}/nvidia-container-toolkit-v${CONTAINER_TOOLKIT_V}.tar.gz
+    wget -q -nc --show-progress --progress=bar:force:noscroll -O ${DATA_DIR}/nvidia-container-toolkit-v${CONTAINER_TOOLKIT_V}.tar.gz https://github.com/unraid/nvidia-container-toolkit/releases/download/${CONTAINER_TOOLKIT_V}/nvidia-container-toolkit-v${CONTAINER_TOOLKIT_V}.tar.gz
   fi
   tar -C /NVIDIA -xf ${DATA_DIR}/nvidia-container-toolkit-v${CONTAINER_TOOLKIT_V}.tar.gz
 
@@ -145,7 +145,7 @@ $PLUGIN_NAME: libnvidia-container v${LIBNVIDIA_CONTAINER_V}
 $PLUGIN_NAME: nvidia-container-toolkit v${CONTAINER_TOOLKIT_V}
 $PLUGIN_NAME:
 $PLUGIN_NAME:
-$PLUGIN_NAME: Custom $PLUGIN_NAME for Unraid Kernel v${UNAME%%-*} by ich777
+$PLUGIN_NAME: Custom $PLUGIN_NAME for Unraid Kernel v${UNAME%%-*}
 $PLUGIN_NAME:
 EOF
   else
@@ -158,7 +158,7 @@ $PLUGIN_NAME: libnvidia-container v${LIBNVIDIA_CONTAINER_V}
 $PLUGIN_NAME: nvidia-container-toolkit v${CONTAINER_TOOLKIT_V}
 $PLUGIN_NAME:
 $PLUGIN_NAME:
-$PLUGIN_NAME: Custom $PLUGIN_NAME for Unraid Kernel v${UNAME%%-*} by ich777
+$PLUGIN_NAME: Custom $PLUGIN_NAME for Unraid Kernel v${UNAME%%-*}
 $PLUGIN_NAME:
 EOF
   fi
