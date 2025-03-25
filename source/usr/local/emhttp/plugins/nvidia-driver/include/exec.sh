@@ -36,13 +36,13 @@ if [ -f /tmp/nvidia_branches ]; then
   FILETIME=$(stat /tmp/nvidia_branches -c %Y)
   DIFF=$(expr $CURENTTIME - $FILETIME)
   if [ $DIFF -gt $CHK_TIMEOUT ]; then
-    echo -n "$(wget -q -N -O /tmp/nvidia_branches https://raw.githubusercontent.com/ich777/versions/master/nvidia_versions)"
+    echo -n "$(wget -q -N -O /tmp/nvidia_branches https://raw.githubusercontent.com/unraid/unraid-nvidia-driver/master/versions.json)"
     if [ ! -s /tmp/nvidia_branches ]; then
       rm -rf /tmp/nvidia_branches
     fi
   fi
 else
-  echo -n "$(wget -q -N -O /tmp/nvidia_branches https://raw.githubusercontent.com/ich777/versions/master/nvidia_versions)"
+  echo -n "$(wget -q -N -O /tmp/nvidia_branches https://raw.githubusercontent.com/unraid/unraid-nvidia-driver/master/versions.json)"
 fi
 }
 
@@ -61,11 +61,11 @@ echo -n "$(cat /tmp/nvidia_driver | tail -1)"
 }
 
 function get_prb(){
-echo -n "$(comm -12 <(cat /tmp/nvidia_driver | awk -F '.' '{printf "%d.%03d.%d\n", $1,$2,$3}' | awk -F '.' '{printf "%d.%03d.%02d\n", $1,$2,$3}') <(echo "$(cat /tmp/nvidia_branches | grep 'PRB' | cut -d '=' -f2 | sort -V | awk -F '.' '{printf "%d.%03d.%d\n", $1,$2,$3}' | awk -F '.' '{printf "%d.%03d.%02d\n", $1,$2,$3}')") | tail -1 | awk -F '.' '{printf "%d.%02d.%02d\n", $1,$2,$3}' | awk '{sub(/\.0+$/,"")}1')"
+echo -n "$(comm -12 <(cat /tmp/nvidia_driver | awk -F '.' '{printf "%d.%03d.%d\n", $1,$2,$3}' | awk -F '.' '{printf "%d.%03d.%02d\n", $1,$2,$3}') <(echo "$(cat /tmp/nvidia_branches | jq -r '.branches.production[]' | sort -V | awk -F '.' '{printf "%d.%03d.%d\n", $1,$2,$3}' | awk -F '.' '{printf "%d.%03d.%02d\n", $1,$2,$3}')") | tail -1 | awk -F '.' '{printf "%d.%02d.%02d\n", $1,$2,$3}' | awk '{sub(/\.0+$/,"")}1')"
 }
 
 function get_nfb(){
-echo -n "$(comm -12 <(cat /tmp/nvidia_driver | awk -F '.' '{printf "%d.%03d.%d\n", $1,$2,$3}' | awk -F '.' '{printf "%d.%03d.%02d\n", $1,$2,$3}') <(echo "$(cat /tmp/nvidia_branches | grep 'NFB' | cut -d '=' -f2 | sort -V | awk -F '.' '{printf "%d.%03d.%d\n", $1,$2,$3}' | awk -F '.' '{printf "%d.%03d.%02d\n", $1,$2,$3}')") | tail -1 | awk -F '.' '{printf "%d.%02d.%02d\n", $1,$2,$3}' | awk '{sub(/\.0+$/,"")}1')"
+echo -n "$(comm -12 <(cat /tmp/nvidia_driver | awk -F '.' '{printf "%d.%03d.%d\n", $1,$2,$3}' | awk -F '.' '{printf "%d.%03d.%02d\n", $1,$2,$3}') <(echo "$(cat /tmp/nvidia_branches | jq -r '.branches.newfeature[]' | sort -V | awk -F '.' '{printf "%d.%03d.%d\n", $1,$2,$3}' | awk -F '.' '{printf "%d.%03d.%02d\n", $1,$2,$3}')") | tail -1 | awk -F '.' '{printf "%d.%02d.%02d\n", $1,$2,$3}' | awk '{sub(/\.0+$/,"")}1')"
 }
 
 function get_nos(){

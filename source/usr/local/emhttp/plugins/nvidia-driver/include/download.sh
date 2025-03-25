@@ -20,7 +20,7 @@ if [ "${SET_DRV_V}" == "latest_nos" ]; then
 else
   export PACKAGE="nvidia"
   export DRIVER_AVAIL="$(wget -qO- https://api.github.com/repos/unraid/unraid-nvidia-driver/releases/tags/${KERNEL_V} | jq -r '.assets[].name' | grep -E ${PACKAGE} | grep -E -v '\.md5$' | sort -V)"
-  export BRANCHES="$(wget -qO- https://raw.githubusercontent.com/ich777/versions/master/nvidia_versions | grep -v "UPDATED")"
+  export BRANCHES="$(wget -qO- https://raw.githubusercontent.com/unraid/unraid-nvidia-driver/master/versions.json | jq -r '.branches')"
 fi
 export DL_URL="https://github.com/unraid/unraid-nvidia-driver/releases/download/${KERNEL_V}"
 export CUR_V="$(nvidia-smi | grep NVIDIA-SMI | cut -d ' ' -f3)"
@@ -108,7 +108,7 @@ if [ "${SET_DRV_V}" == "latest" ]; then
     fi
   fi
 elif [ "${SET_DRV_V}" == "latest_prb" ]; then
-  LAT_PRB_AVAIL="$(echo "$BRANCHES" | grep 'PRB' | cut -d '=' -f2 | sort -V)"
+  LAT_PRB_AVAIL="$(echo "$BRANCHES" | jq -r '.production[]' | sort -V)"
   if [ -z "$LAT_PRB_AVAIL" ]; then
     if [ -z "${CUR_V}" ]; then
       echo
@@ -151,7 +151,7 @@ elif [ "${SET_DRV_V}" == "latest_prb" ]; then
     fi
   fi
 elif [ "${SET_DRV_V}" == "latest_nfb" ]; then
-  LAT_NFB_AVAIL="$(echo "$BRANCHES" | grep 'NFB' | cut -d '=' -f2 | sort -V)"
+  LAT_NFB_AVAIL="$(echo "$BRANCHES" | jq -r '.newfeature[]' | sort -V)"
   if [ -z "$LAT_NFB_AVAIL" ]; then
     if [ -z "${CUR_V}" ]; then
       echo
