@@ -296,8 +296,8 @@ fi
 #Install driver package
 install() {
 /sbin/installpkg "&packages;/${KERNEL_V%%-*}/${PACKAGE}*.txz"
-depmod >> /dev/null
-modprobe nvidia  >> /dev/null
+depmod --all &gt;/dev/null
+modprobe nvidia &gt;/dev/null
 }
 
 activate() {
