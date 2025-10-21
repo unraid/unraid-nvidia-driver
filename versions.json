@@ -17,7 +17,7 @@
   },
   "runtimes": {
     "containertoolkit": {
-      "current": "1.17.9"
+      "current": "1.18.0"
     },
     "libnvidia": {
       "current": "1.18.0"
