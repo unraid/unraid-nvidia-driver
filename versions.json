@@ -9,7 +9,7 @@
       "last_nfb": "575.64.03"
     },
     "beta": {
-      "current": "580.65.06"
+      "current": "590.44.01"
     },
     "legacy": {
       "current": "470.256.02"
@@ -17,7 +17,7 @@
   },
   "runtimes": {
     "containertoolkit": {
-      "current": "1.18.0"
+      "current": "1.18.1"
     },
     "libnvidia": {
       "current": "1.18.1"
