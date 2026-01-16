@@ -25,9 +25,9 @@ else
     echo -n "$(modinfo nvidia | grep "version:" | awk '{print $2}' | head -1)" > /tmp/nvidia_driver
   fi
 fi
-# Check if driver version 470 is in /tmp/nvos_driver
-if [ ! $(grep "470" /tmp/nvidia_driver) ]; then
-  LEGACY_DRIVER="$(echo "$DRIVERS" | awk -F "-" '{print $2}' | grep "470")"
+# Check if driver version 580 is in /tmp/nvos_driver
+if [ ! $(grep "580" /tmp/nvidia_driver) ]; then
+  LEGACY_DRIVER="$(echo "$DRIVERS" | awk -F "-" '{print $2}' | grep "580")"
   if [ ! -z "${LEGACY_DRIVER}" ]; then
     sed -i "1s/^/${LEGACY_DRIVER}\n/" /tmp/nvidia_driver
   fi
