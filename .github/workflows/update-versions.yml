@@ -49,7 +49,18 @@ jobs:
         CONTAINER_TOOLKIT="$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s https://api.github.com/repos/unraid/nvidia-container-toolkit/releases/latest | jq -r '.tag_name')"
         LIBNVIDIA="$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s https://api.github.com/repos/unraid/libnvidia-container/releases/latest | jq -r '.tag_name')"
 
-        # Exit if no versions are returned 
+        # Ensure libnvidia-container matches toolkit version to prevent mismatches.
+        # Both repos release in sync; if versions differ, use the toolkit version
+        # and verify the matching libnvidia-container release exists.
+        if [ -n "${CONTAINER_TOOLKIT}" ] && [ -n "${LIBNVIDIA}" ] && [ "${CONTAINER_TOOLKIT}" != "${LIBNVIDIA}" ]; then
+          HTTP_CODE=$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s -o /dev/null -w "%{http_code}" \
+            "https://api.github.com/repos/unraid/libnvidia-container/releases/tags/${CONTAINER_TOOLKIT}")
+          if [ "${HTTP_CODE}" == "200" ]; then
+            LIBNVIDIA="${CONTAINER_TOOLKIT}"
+          fi
+        fi
+
+        # Exit if no versions are returned
         if [ -z "${RAW_DATA}" ]; then
           exit 1
         fi

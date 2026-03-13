@@ -1,0 +1,195 @@
+name: Build NVIDIA Driver Packages
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'build-matrix.json'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      gcc_tag: ${{ steps.set-matrix.outputs.gcc_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set-matrix
+        run: |
+          MATRIX=$(jq -c '
+            # Builds from branch definitions
+            [
+              .kernel_versions[] as $k |
+              .branches | to_entries[] |
+              .value.module_types[] as $m |
+              {
+                driver_version: .value.driver_version,
+                module_type: $m,
+                kernel_version: $k,
+                branch: .key
+              }
+            ]
+            +
+            # Extra builds for pin-to-specific-version (outside branch structure)
+            [
+              .kernel_versions[] as $k |
+              (.extra_builds // [])[] |
+              .module_types[] as $m |
+              {
+                driver_version: .driver_version,
+                module_type: $m,
+                kernel_version: $k,
+                branch: "extra"
+              }
+            ]
+          ' build-matrix.json)
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "gcc_tag=$(jq -r '.gcc_tag' build-matrix.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.matrix) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h /
+
+      - name: Create output directory
+        run: mkdir -p output
+
+      - name: Build package in container
+        run: |
+          docker pull ghcr.io/ich777/unraid_kernel:${{ needs.prepare.outputs.gcc_tag }}
+          docker run --rm \
+            --entrypoint bash \
+            -v "$GITHUB_WORKSPACE":/workspace \
+            -v "$GITHUB_WORKSPACE/output":/output \
+            ghcr.io/ich777/unraid_kernel:${{ needs.prepare.outputs.gcc_tag }} \
+            -c '
+              set -euo pipefail
+
+              DRIVER_VERSION="${{ matrix.driver_version }}"
+              KERNEL_VERSION="${{ matrix.kernel_version }}"
+              MODULE_TYPE="${{ matrix.module_type }}"
+
+              if [ "${MODULE_TYPE}" == "opensource" ]; then
+                PKG_PREFIX="nvos"
+                BUILD_ARG="opensource"
+              else
+                PKG_PREFIX="nvidia"
+                BUILD_ARG=""
+              fi
+
+              echo "=== Building ${PKG_PREFIX}-${DRIVER_VERSION} (${MODULE_TYPE}) for kernel ${KERNEL_VERSION} ==="
+
+              export UNAME="${KERNEL_VERSION}"
+              export CPU_COUNT="$(nproc)"
+              export DATA_DIR="/tmp/nvidia-build"
+              mkdir -p "${DATA_DIR}"
+
+              # ---------------------------------------------------------------
+              # Step 1: Prepare kernel sources
+              # ---------------------------------------------------------------
+              echo "=== Downloading kernel sources ==="
+              KERNEL_TAR="linux-${KERNEL_VERSION}.tar.xz"
+              KERNEL_URL="https://github.com/ich777/unraid_kernel/releases/download/${KERNEL_VERSION}/${KERNEL_TAR}"
+              wget -q -O "/tmp/${KERNEL_TAR}" "${KERNEL_URL}"
+              mkdir -p "/usr/src/linux-${KERNEL_VERSION}"
+              tar xf "/tmp/${KERNEL_TAR}" -C "/usr/src/linux-${KERNEL_VERSION}"
+              cd "/usr/src/linux-${KERNEL_VERSION}"
+
+              echo "=== Preparing kernel headers ==="
+              make oldconfig </dev/null 2>&1 | tail -5
+              make modules_prepare -j${CPU_COUNT} 2>&1 | tail -5
+
+              mkdir -p "/lib/modules/${UNAME}"
+              ln -sf "/usr/src/linux-${KERNEL_VERSION}" "/lib/modules/${UNAME}/build"
+              ln -sf "/usr/src/linux-${KERNEL_VERSION}" "/lib/modules/${UNAME}/source"
+              cd /
+
+              # ---------------------------------------------------------------
+              # Step 2: Create makepkg shim
+              # ---------------------------------------------------------------
+              mkdir -p "${DATA_DIR}/bzroot-extracted-${UNAME}/sbin"
+              printf "#!/bin/bash\n# Grab last argument as output file\nfor PKG; do true; done\ntar cJf \"\${PKG}\" . 2>/dev/null; exit 0\n" > "${DATA_DIR}/bzroot-extracted-${UNAME}/sbin/makepkg"
+              chmod +x "${DATA_DIR}/bzroot-extracted-${UNAME}/sbin/makepkg"
+
+              # ---------------------------------------------------------------
+              # Step 3: Build using compile.sh
+              # ---------------------------------------------------------------
+              echo "=== Loading compile.sh and building ==="
+              cd /workspace
+
+              real_wget="$(which wget)"
+              mkdir -p /usr/local/bin
+              printf "#!/bin/bash\nexec ${real_wget} \"\${@/--show-progress/}\"" > /usr/local/bin/wget
+              chmod +x /usr/local/bin/wget
+
+              set +u
+              source source/compile.sh "${DRIVER_VERSION}" ${BUILD_ARG}
+              nvidia_driver "${DRIVER_VERSION}" ${BUILD_ARG}
+              set -u
+
+              # ---------------------------------------------------------------
+              # Step 4: Copy output artifacts
+              # ---------------------------------------------------------------
+              echo "=== Copying build artifacts ==="
+              find /tmp -name "${PKG_PREFIX}-*.txz" -exec cp {} /output/ \;
+              find /tmp -name "${PKG_PREFIX}-*.txz.md5" -exec cp {} /output/ \;
+
+              echo "=== Build artifacts ==="
+              ls -la /output/
+            '
+
+      - name: Verify build output
+        run: |
+          ls -la output/
+          if [ -z "$(ls output/*.txz 2>/dev/null)" ]; then
+            echo "ERROR: No .txz package found in output!"
+            exit 1
+          fi
+          cd output
+          for f in *.txz; do
+            if [ -f "${f}.md5" ]; then
+              EXPECTED="$(cat "${f}.md5")"
+              ACTUAL="$(md5sum "${f}" | awk '{print $1}')"
+              echo "${f}: expected=${EXPECTED} actual=${ACTUAL}"
+              if [ "${EXPECTED}" != "${ACTUAL}" ]; then
+                echo "CHECKSUM MISMATCH!"
+                exit 1
+              fi
+              echo "Checksum OK"
+            fi
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.module_type == 'opensource' && 'nvos' || 'nvidia' }}-${{ matrix.driver_version }}-${{ matrix.kernel_version }}
+          path: output/*
+          retention-days: 90
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ matrix.kernel_version }}"
+          gh release view "${TAG}" --repo ${{ github.repository }} >/dev/null 2>&1 || \
+            gh release create "${TAG}" --repo ${{ github.repository }} \
+              --title "Drivers for kernel ${TAG}" \
+              --notes "NVIDIA driver packages for Unraid kernel ${TAG}"
+          for f in output/*; do
+            gh release upload "${TAG}" "${f}" --repo ${{ github.repository }} --clobber
+          done
+          echo "=== Release ${TAG} updated ==="
+          gh release view "${TAG}" --repo ${{ github.repository }}
