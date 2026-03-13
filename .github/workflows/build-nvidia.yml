@@ -135,8 +135,10 @@ jobs:
               printf "#!/bin/bash\nexec ${real_wget} \"\${@/--show-progress/}\"" > /usr/local/bin/wget
               chmod +x /usr/local/bin/wget
 
-              source source/compile.sh "${DRIVER_VERSION}" ${BUILD_ARG:-"dummy"}
+              set +u
+              source source/compile.sh "${DRIVER_VERSION}" ${BUILD_ARG}
               nvidia_driver "${DRIVER_VERSION}" ${BUILD_ARG}
+              set -u
 
               # ---------------------------------------------------------------
               # Step 4: Copy output artifacts
