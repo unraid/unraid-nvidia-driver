@@ -35,7 +35,7 @@ fi
 }
 
 #Check if one of latest, latest_prb or latest_nfb is checked otherwise exit
-if [[ "${SET_DRV_V}" != "latest" && "${SET_DRV_V}" != "latest_prb" && "${SET_DRV_V}" != "latest_nfb" ]]; then
+if [[ "${SET_DRV_V}" != "latest" && "${SET_DRV_V}" != "latest_prb" && "${SET_DRV_V}" != "latest_nfb" && "${SET_DRV_V}" != "latest_beta" ]]; then
   exit 0
 elif [ "${SET_DRV_V}" == "latest" ]; then
   LAT_PACKAGE="$(wget -qO- https://api.github.com/repos/unraid/unraid-nvidia-driver/releases/tags/${KERNEL_V} | jq -r '.assets[].name' | grep "$PACKAGE" | grep -E -v '\.md5$' | sort -V | tail -1)"
@@ -67,6 +67,17 @@ elif [ "${SET_DRV_V}" == "latest_nfb" ]; then
   elif [ "$(echo "$LAT_PACKAGE" | cut -d '-' -f2)" != "${INSTALLED_V}" ]; then
     download
   fi
+elif [ "${SET_DRV_V}" == "latest_beta" ]; then
+  AVAIL_V="$(wget -qO- https://api.github.com/repos/unraid/unraid-nvidia-driver/releases/tags/${KERNEL_V} | jq -r '.assets[].name' | grep "$PACKAGE" | grep -E -v '\.md5$' | sort -V)"
+  BETA_V="$(wget -qO- https://raw.githubusercontent.com/unraid/unraid-nvidia-driver/master/versions.json | jq -r '.branches.beta.current')"
+  LAT_BETA_V="$(comm -12 <(echo "$(echo "$AVAIL_V" | cut -d '-' -f2 | awk -F '.' '{printf "%d.%03d.%d\n", $1,$2,$3}' | awk -F '.' '{printf "%d.%03d.%02d\n", $1,$2,$3}')") <(echo "${BETA_V}" | awk -F '.' '{printf "%d.%03d.%d\n", $1,$2,$3}' | awk -F '.' '{printf "%d.%03d.%02d\n", $1,$2,$3}') | tail -1 | awk -F '.' '{printf "%d.%02d.%02d\n", $1,$2,$3}' | awk '{sub(/\.0+$/,"")}1')"
+  LAT_PACKAGE="$(echo "${AVAIL_V}" | grep "\-${LAT_BETA_V}-")"
+  if [ -z ${LAT_PACKAGE} ]; then
+    logger "Nvidia-Driver-Plugin: Automatic update check failed, can't get latest Beta Branch version number!"
+    exit 1
+  elif [ "$(echo "$LAT_PACKAGE" | cut -d '-' -f2)" != "${INSTALLED_V}" ]; then
+    download
+  fi
 elif [ "${SET_DRV_V}" == "latest_nos" ]; then
   LAT_PACKAGE="$(wget -qO- https://api.github.com/repos/unraid/unraid-nvidia-driver/releases/tags/${KERNEL_V} | jq -r '.assets[].name' | grep -E -v '\.md5$' | grep "${PACKAGE}" | sort -V | tail -1)"
   if [ -z ${LAT_PACKAGE} ]; then
@@ -77,6 +88,19 @@ elif [ "${SET_DRV_V}" == "latest_nos" ]; then
   fi
 fi
 
-#Check for old packages that are not suitable for this Kernel and not suitable for the current Nvidia driver version
-rm -rf $(ls -d /boot/config/plugins/nvidia-driver/packages/* 2>/dev/null | grep -v "${KERNEL_V%%-*}")
-rm -f $(ls /boot/config/plugins/nvidia-driver/packages/${KERNEL_V%%-*}/* 2>/dev/null | grep -v "$LAT_PACKAGE")
+# SEC: Safe cleanup of old kernel directories.
+# Original used unquoted command substitution with rm -rf, which could
+# delete everything if variables were empty (grep -v "" matches all lines).
+# Using a loop with explicit checks prevents accidental mass deletion.
+while IFS= read -r dir; do
+  [[ "$(basename "$dir")" != "${KERNEL_V%%-*}" ]] && rm -rf "$dir"
+done < <(find /boot/config/plugins/nvidia-driver/packages -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+
+# SEC: Only clean up old packages if we know the current package name.
+# Without this guard, an empty $LAT_PACKAGE would cause grep -v "" to
+# match nothing, and all files would be deleted from the packages dir.
+if [ -n "$LAT_PACKAGE" ]; then
+  while IFS= read -r file; do
+    [[ "$(basename "$file")" != "$LAT_PACKAGE" && "$(basename "$file")" != "${LAT_PACKAGE}.md5" ]] && rm -f "$file"
+  done < <(find "/boot/config/plugins/nvidia-driver/packages/${KERNEL_V%%-*}" -mindepth 1 -maxdepth 1 -type f 2>/dev/null)
+fi
