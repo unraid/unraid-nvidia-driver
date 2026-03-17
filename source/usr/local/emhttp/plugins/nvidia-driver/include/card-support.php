@@ -16,7 +16,7 @@ function nvidia_extract_version($value) {
     return null;
   }
 
-  if (preg_match('/\b(\d{3}\.\d{1,3}(?:\.\d{1,3})?)\b/', $text, $match)) {
+  if (preg_match('/\bv?(\d{3}\.\d{1,3}(?:\.\d{1,3})?)\b/i', $text, $match)) {
     return $match[1];
   }
 
@@ -134,7 +134,7 @@ function nvidia_required_branch_for_card($card_name) {
 
   // Tesla/G80-G200 era cards generally require legacy 340.xx.
   $branch_340_patterns = array(
-    '/\btesla\b/',
+    '/\btesla\s*(c870|s870|d870|c1060|s1070|m1060)\b/',
     '/\bg8\d{2}\b/',
     '/\bg9\d{2}\b/',
     '/\bgt2\d{2}\b/',
@@ -314,6 +314,8 @@ function nvidia_valid_drivers_for_device_id($device_id, $available_versions, $de
  * Check a single NVIDIA driver version and return detailed diagnostics.
  */
 function nvidia_driver_device_id_check_from_nvidia($driver_version, $device_id, $fetch_timeout = 8) {
+  static $supportedchips_cache = array();
+
   $normalized_id = strtoupper((string)nvidia_normalize_device_id($device_id));
   $normalized_version = (string)nvidia_extract_version($driver_version);
 
@@ -338,7 +340,13 @@ function nvidia_driver_device_id_check_from_nvidia($driver_version, $device_id, 
     )
   ));
 
-  $html = @file_get_contents($url, false, $context);
+  if (array_key_exists($normalized_version, $supportedchips_cache)) {
+    $html = $supportedchips_cache[$normalized_version];
+  } else {
+    $html = @file_get_contents($url, false, $context);
+    $supportedchips_cache[$normalized_version] = ($html === false || $html === '') ? false : $html;
+  }
+
   if ($html === false || $html === '') {
     return array(
       'driver_version' => $normalized_version,

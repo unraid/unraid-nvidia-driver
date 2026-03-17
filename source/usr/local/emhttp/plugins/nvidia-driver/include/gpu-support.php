@@ -289,9 +289,11 @@ if (!empty($gpu_entries)) {
     $support['recommended_driver'] = $support['best_driver'];
     $support['recommendation_source'] = 'best-available';
 
+    $kernel_mode = strtolower(trim((string)(isset($entry['kernel_module_support']) ? $entry['kernel_module_support'] : '')));
+    $open_capable = ($kernel_mode === 'both' || $kernel_mode === 'open-only' || $kernel_mode === 'open');
+
     if (
-      isset($entry['kernel_module_support']) &&
-      $entry['kernel_module_support'] !== 'proprietary-only' &&
+      $open_capable &&
       !empty($open_recommended) &&
       !empty($support['valid_drivers']) &&
       in_array($open_recommended, $support['valid_drivers'], true)

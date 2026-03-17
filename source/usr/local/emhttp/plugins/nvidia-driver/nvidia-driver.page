@@ -147,6 +147,11 @@ function applyDriverOptionSupport(rows) {
 
     var supportedAll = null;
     rows.forEach(function(row) {
+      var fetchOkCount = Number((row && row.fetch_ok_count) || 0);
+      if (fetchOkCount === 0) {
+        return;
+      }
+
       var list = Array.isArray(row.valid_drivers) ? row.valid_drivers : [];
       var set = new Set(list);
       if (supportedAll === null) {
@@ -156,10 +161,12 @@ function applyDriverOptionSupport(rows) {
       }
     });
 
+    // No resolved support data: keep current option state.
     if (supportedAll === null) {
       return;
     }
 
+    var incompatibleAll = (supportedAll.size === 0);
     var options = document.querySelectorAll('input[name="drv_version"]');
     options.forEach(function(option) {
       var mappedVersion = option.getAttribute('data-driver-version');
@@ -167,7 +174,7 @@ function applyDriverOptionSupport(rows) {
         return;
       }
 
-      var isSupported = supportedAll.has(mappedVersion);
+      var isSupported = incompatibleAll ? false : supportedAll.has(mappedVersion);
       option.disabled = !isSupported;
       var parent = option.closest('p');
       if (parent) {
@@ -181,12 +188,16 @@ function applyDriverOptionSupport(rows) {
       var proprietaryOnlyAll = rows.every(function(row) {
         return String((row && row.kernel_module_support) || '').toLowerCase() === 'proprietary-only';
       });
+      var hasUnknown = rows.some(function(row) {
+        return String((row && row.kernel_module_support) || '').toLowerCase() === 'unknown';
+      });
+      var hideOpen = proprietaryOnlyAll || hasUnknown;
 
       if (openParent) {
-        openParent.style.display = proprietaryOnlyAll ? 'none' : '';
+        openParent.style.display = hideOpen ? 'none' : '';
       }
 
-      if (proprietaryOnlyAll) {
+      if (hideOpen) {
         openOption.disabled = true;
       }
     }
