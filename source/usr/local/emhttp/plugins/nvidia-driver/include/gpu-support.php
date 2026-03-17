@@ -3,6 +3,12 @@ require_once '/usr/local/emhttp/plugins/nvidia-driver/include/card-support.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Remote mapping is optional; local file is always the fallback source.
+define('NVIDIA_ARCH_MAPPING_REMOTE_ENABLED', false);
+define('NVIDIA_ARCH_MAPPING_REMOTE_URL', 'https://raw.githubusercontent.com/unraid/unraid-nvidia-driver/refs/tags/2026.01.16/architecture-mapping.json');
+define('NVIDIA_ARCH_MAPPING_REMOTE_CACHE_TTL', 21600);
+define('NVIDIA_ARCH_MAPPING_REMOTE_TIMEOUT', 5);
+
 function nvidia_normalize_architecture_mapping($data, $default) {
   if (!is_array($data)) {
     return $default;
@@ -19,7 +25,7 @@ function nvidia_normalize_architecture_mapping($data, $default) {
   return $data;
 }
 
-function nvidia_load_architecture_mapping($file_path, $remote_url = null, $remote_cache_ttl = 21600) {
+function nvidia_load_architecture_mapping($file_path, $remote_url = null, $remote_cache_ttl = 21600, $remote_timeout = 5) {
   $default = array(
     'chipPrefixToArchitecture' => array(
       'GK' => 'Kepler',
@@ -64,7 +70,7 @@ function nvidia_load_architecture_mapping($file_path, $remote_url = null, $remot
     $context = stream_context_create(array(
       'http' => array(
         'method' => 'GET',
-        'timeout' => 5,
+        'timeout' => max(1, (int)$remote_timeout),
         'header' => "User-Agent: unraid-nvidia-driver/1.0\r\n"
       )
     ));
@@ -141,29 +147,20 @@ function nvidia_kernel_module_support_mode($architecture, $kernel_support_mappin
 
 $architecture_mapping = nvidia_load_architecture_mapping(
   '/usr/local/emhttp/plugins/nvidia-driver/architecture-mapping.json',
-  'https://github.com/unraid/unraid-nvidia-driver/raw/master/architecture-mapping.json'
+  NVIDIA_ARCH_MAPPING_REMOTE_ENABLED ? NVIDIA_ARCH_MAPPING_REMOTE_URL : null,
+  NVIDIA_ARCH_MAPPING_REMOTE_CACHE_TTL,
+  NVIDIA_ARCH_MAPPING_REMOTE_TIMEOUT
 );
 $chip_prefix_to_architecture = $architecture_mapping['chipPrefixToArchitecture'];
 $kernel_support_mapping = $architecture_mapping['kernelModuleSupport'];
 
-$latest_v = trim((string)shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_latest_version'));
-$latest_prb_v = trim((string)shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_prb'));
-$latest_nfb_v = trim((string)shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nfb'));
-$latest_nos_v = trim((string)shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nos'));
-
-$eachlines = @file('/tmp/nvidia_driver', FILE_IGNORE_NEW_LINES);
-if (!is_array($eachlines)) {
-  $eachlines = array();
-}
-
-$available_versions = array_values(array_filter(array_map('trim', $eachlines), 'strlen'));
-$candidate_versions = array();
-
-foreach (array($latest_v, $latest_prb_v, $latest_nfb_v, $latest_nos_v) as $v) {
-  if ($v !== '') {
-    $candidate_versions[] = $v;
-  }
-}
+$version_data = nvidia_get_nvidia_versions();
+$latest_v = $version_data['latest_v'];
+$latest_prb_v = $version_data['latest_prb_v'];
+$latest_nfb_v = $version_data['latest_nfb_v'];
+$latest_nos_v = $version_data['latest_nos_v'];
+$available_versions = $version_data['available_versions'];
+$candidate_versions = $version_data['candidate_versions'];
 
 // Add one representative (highest) version per major branch available in plugin metadata.
 $branch_buckets = array();

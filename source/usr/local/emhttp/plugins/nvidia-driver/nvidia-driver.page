@@ -11,13 +11,12 @@ $selected_v = shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.s
 //Update driver versions and create file '/tmp/nvidia_driver'
 shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh update');
 
-//Get latest version
-$latest_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_latest_version');
-
-//Get branch versions
-$latest_prb_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_prb');
-$latest_nfb_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nfb');
-$latest_nos_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nos');
+//Get latest version metadata
+$version_data = nvidia_get_nvidia_versions();
+$latest_v = $version_data['latest_v'];
+$latest_prb_v = $version_data['latest_prb_v'];
+$latest_nfb_v = $version_data['latest_nfb_v'];
+$latest_nos_v = $version_data['latest_nos_v'];
 
 //Get driver license
 $module_license = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_license');
@@ -32,17 +31,9 @@ ini_set('display_errors',1);
 //Get value from update check
 $update_check = shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh update_check");
 
-$filename = "/tmp/nvidia_driver";
-$eachlines = file($filename, FILE_IGNORE_NEW_LINES);
-
-$available_versions = is_array($eachlines) ? array_values(array_filter(array_map('trim', $eachlines), 'strlen')) : array();
-$candidate_versions = array();
-
-foreach (array(trim($latest_v), trim($latest_prb_v), trim($latest_nfb_v), trim($latest_nos_v)) as $v) {
-  if ($v !== '') {
-    $candidate_versions[] = $v;
-  }
-}
+$available_versions = $version_data['available_versions'];
+$candidate_versions = $version_data['candidate_versions'];
+$eachlines = $available_versions;
 
 foreach (array(470, 390, 340) as $legacy_major) {
   $legacy_best = nvidia_best_version_for_branch($available_versions, $legacy_major);

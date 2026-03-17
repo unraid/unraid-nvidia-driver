@@ -96,6 +96,43 @@ function nvidia_latest_current_driver($available_versions, $legacy_majors = arra
 }
 
 /**
+ * Collect current NVIDIA version metadata used across plugin pages.
+ *
+ * Returns:
+ * - latest_v, latest_prb_v, latest_nfb_v, latest_nos_v
+ * - available_versions from /tmp/nvidia_driver
+ * - candidate_versions seeded from non-empty latest* values
+ */
+function nvidia_get_nvidia_versions() {
+  $latest_v = trim((string)shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_latest_version'));
+  $latest_prb_v = trim((string)shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_prb'));
+  $latest_nfb_v = trim((string)shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nfb'));
+  $latest_nos_v = trim((string)shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nos'));
+
+  $eachlines = @file('/tmp/nvidia_driver', FILE_IGNORE_NEW_LINES);
+  if (!is_array($eachlines)) {
+    $eachlines = array();
+  }
+
+  $available_versions = array_values(array_filter(array_map('trim', $eachlines), 'strlen'));
+  $candidate_versions = array();
+  foreach (array($latest_v, $latest_prb_v, $latest_nfb_v, $latest_nos_v) as $v) {
+    if ($v !== '') {
+      $candidate_versions[] = $v;
+    }
+  }
+
+  return array(
+    'latest_v' => $latest_v,
+    'latest_prb_v' => $latest_prb_v,
+    'latest_nfb_v' => $latest_nfb_v,
+    'latest_nos_v' => $latest_nos_v,
+    'available_versions' => $available_versions,
+    'candidate_versions' => $candidate_versions
+  );
+}
+
+/**
  * Detect the minimal required NVIDIA branch for a card based on known families.
  * This is heuristic (name-based), intended for UI warning/suggestion logic.
  *
@@ -279,7 +316,7 @@ function nvidia_valid_drivers_for_device_id($device_id, $available_versions, $de
         $valid_versions[] = $normalized_version;
       }
     }
-  } elseif ($required_branch === 'current') {
+  } elseif ($required_branch === 'current' || $required_branch === 'unknown') {
     foreach ($available_versions as $version) {
       $normalized_version = nvidia_extract_version($version);
       $major = nvidia_driver_major($normalized_version);
@@ -410,16 +447,16 @@ function nvidia_valid_drivers_for_device_id_from_nvidia($device_id, $candidate_v
   }
 
   foreach ($candidate_versions as $version) {
-    $version = nvidia_extract_version($version);
-    if ($version === null) {
+    $parsed_version = nvidia_extract_version($version);
+    if ($parsed_version === null) {
       continue;
     }
 
-    $check = nvidia_driver_device_id_check_from_nvidia($version, $normalized_id, $fetch_timeout);
+    $check = nvidia_driver_device_id_check_from_nvidia($parsed_version, $normalized_id, $fetch_timeout);
     $checked_versions[] = $check;
 
     if (!empty($check['supported'])) {
-      $valid_versions[] = $version;
+      $valid_versions[] = $parsed_version;
     }
   }
 
