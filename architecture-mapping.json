@@ -1,0 +1,30 @@
+{
+  "chipPrefixToArchitecture": {
+    "GK": "Kepler",
+    "GM": "Maxwell",
+    "GP": "Pascal",
+    "GV": "Volta",
+    "TU": "Turing",
+    "GA": "Ampere",
+    "AD": "Ada",
+    "GH": "Hopper",
+    "GB": "Blackwell"
+  },
+  "kernelModuleSupport": {
+    "proprietary-only": [
+      "Kepler",
+      "Maxwell",
+      "Pascal",
+      "Volta"
+    ],
+    "both": [
+      "Turing",
+      "Ampere",
+      "Ada",
+      "Hopper"
+    ],
+    "open-only": [
+      "Blackwell"
+    ]
+  }
+}
