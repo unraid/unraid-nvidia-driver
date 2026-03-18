@@ -84,6 +84,49 @@ function escapeHtml(value) {
       .replace(/'/g, '&#39;');
 }
 
+var latestGpuSupportRows = [];
+var gpuSelectionFilterDisabled = false;
+
+function resetDriverOptionSupport() {
+    var options = document.querySelectorAll('input[name="drv_version"]');
+    options.forEach(function(option) {
+      option.disabled = false;
+      var parent = option.closest('p');
+      if (parent) {
+        parent.style.opacity = '1';
+        parent.style.display = '';
+      }
+    });
+}
+
+function updateGpuFilterButton() {
+    var button = document.getElementById('toggle-gpu-driver-filter');
+    var status = document.getElementById('gpu-driver-filter-status');
+    if (!button || !status) {
+      return;
+    }
+
+    if (gpuSelectionFilterDisabled) {
+      button.value = 'Enable GPU-Based Filtering';
+      status.textContent = 'GPU-based driver filtering is disabled.';
+    } else {
+      button.value = 'Disable GPU-Based Filtering';
+      status.textContent = 'GPU-based driver filtering is enabled.';
+    }
+}
+
+function toggleGpuDriverFilter() {
+    gpuSelectionFilterDisabled = !gpuSelectionFilterDisabled;
+
+    if (gpuSelectionFilterDisabled) {
+      resetDriverOptionSupport();
+    } else {
+      applyDriverOptionSupport(latestGpuSupportRows);
+    }
+
+    updateGpuFilterButton();
+}
+
 function renderGpuSupportRows(rows) {
     var container = document.getElementById('gpu-support-content');
     if (!container) {
@@ -132,6 +175,14 @@ function renderGpuSupportRows(rows) {
 }
 
 function applyDriverOptionSupport(rows) {
+    latestGpuSupportRows = Array.isArray(rows) ? rows : [];
+
+    resetDriverOptionSupport();
+
+    if (gpuSelectionFilterDisabled) {
+      return;
+    }
+
     if (!Array.isArray(rows) || rows.length === 0) {
       return;
     }
@@ -234,6 +285,7 @@ function loadGpuSupport() {
 }
 
 document.addEventListener('DOMContentLoaded', loadGpuSupport);
+document.addEventListener('DOMContentLoaded', updateGpuFilterButton);
 </script>
 
 <style>
@@ -267,6 +319,10 @@ table tbody td {
             <div id="gpu-support-content">
               <p><i>Loading supported drivers...</i></p>
             </div>
+            <p>
+              <input type="button" id="toggle-gpu-driver-filter" value="Disable GPU-Based Filtering" onclick="toggleGpuDriverFilter()">
+              <span id="gpu-driver-filter-status">GPU-based driver filtering is enabled.</span>
+            </p>
             <br/>
         </tr>
     </table>
