@@ -250,7 +250,7 @@ table tbody td {
 <div style="width: 47%; min-width: 700px; max-width: 1260px; flex-wrap: wrap; margin: 10px;">
 <p><b><font size="+1">Nvidia Info:</font></b></p>
             <p>Nvidia Driver Version: 
-            <b style="color:green"><?php echo $cur_drv_v; ?></b></p>
+            <b style="color:green"><?php echo htmlspecialchars((string)$cur_drv_v, ENT_QUOTES, 'UTF-8'); ?></b></p>
         <? if (isset($module_license ) === true && trim($module_license ) === 'OPENSOURCE'): ?>
             <p>Open Source Kernel Module: 
             <b style="color:blue">Yes</b></p>
@@ -295,19 +295,19 @@ table tbody td {
               <tr>
                 <td><b>Latest Versions:</b></td>
                 <td>
-                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_v_norm); ?>" value="latest" <?php echo ( $selected_v == "latest") ? 'checked="checked"' : ''; ?><font><b>latest</font>:</b> <?php echo htmlspecialchars("v" . $latest_v, ENT_QUOTES, 'UTF-8'); ?> </p>
+                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_v_norm); ?>" value="latest" <?php echo ( $selected_v == "latest") ? 'checked="checked"' : ''; ?>/><font><b>latest</font>:</b> <?php echo htmlspecialchars("v" . $latest_v, ENT_QUOTES, 'UTF-8'); ?> </p>
                     <? if (isset($latest_prb_v ) === true && trim($latest_prb_v ) !== ''): ?>
-                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_prb_v_norm); ?>" value="latest_prb" <?php echo ( $selected_v == "latest_prb") ? 'checked="checked"' : ''; ?><b><font color = "green"><b>Production Branch</font>:</b>  <?php echo htmlspecialchars("v" . $latest_prb_v, ENT_QUOTES, 'UTF-8'); ?> </p>
+                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_prb_v_norm); ?>" value="latest_prb" <?php echo ( $selected_v == "latest_prb") ? 'checked="checked"' : ''; ?>/><b><font color = "green"><b>Production Branch</font>:</b>  <?php echo htmlspecialchars("v" . $latest_prb_v, ENT_QUOTES, 'UTF-8'); ?> </p>
                     <? else: ?>
                     <p><b><font color = "green">Production Branch</font>:</b> <i>Not found for this Unraid version!</i></p>
                     <? endif; ?>
                     <? if (isset($latest_nfb_v ) === true && trim($latest_nfb_v ) !== ''): ?>
-                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_nfb_v_norm); ?>" value="latest_nfb" <?php echo ( $selected_v == "latest_nfb") ? 'checked="checked"' : ''; ?><b><font color = "tomato"><b>New Feature Branch</font>:</b> <?php echo htmlspecialchars("v" . $latest_nfb_v, ENT_QUOTES, 'UTF-8'); ?></p>
+                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_nfb_v_norm); ?>" value="latest_nfb" <?php echo ( $selected_v == "latest_nfb") ? 'checked="checked"' : ''; ?>/><b><font color = "tomato"><b>New Feature Branch</font>:</b> <?php echo htmlspecialchars("v" . $latest_nfb_v, ENT_QUOTES, 'UTF-8'); ?></p>
                     <? else: ?>
                     <p><b><font color = "tomato">New Feature Branch</font>:</b> <i>Not found for this Unraid version!</i></p>
                     <? endif; ?>
                     <? if (isset($latest_nos_v ) === true && trim($latest_nos_v ) !== ''): ?>
-                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_nos_v_norm); ?>" value="latest_nos" <?php echo ( $selected_v == "latest_nos") ? 'checked="checked"' : ''; ?><b><font color = "blue"><b>Open Source Driver</font>:</b> <?php echo htmlspecialchars("v" . $latest_nos_v, ENT_QUOTES, 'UTF-8'); ?><? echo (version_compare($unraid_version['version'], '7.0.0-rc.1.1', '<')) ? '<em><b> - Please see readme below!</b></em>' : ''; ?></p>
+                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_nos_v_norm); ?>" value="latest_nos" <?php echo ( $selected_v == "latest_nos") ? 'checked="checked"' : ''; ?>/><b><font color = "blue"><b>Open Source Driver</font>:</b> <?php echo htmlspecialchars("v" . $latest_nos_v, ENT_QUOTES, 'UTF-8'); ?><? echo (version_compare($unraid_version['version'], '7.0.0-rc.1.1', '<')) ? '<em><b> - Please see readme below!</b></em>' : ''; ?></p>
                     <? else: ?>
                     <p><b><font color = "blue">Open Source Driver</font>:</b> <i>Not found for this Unraid version!</i></p>
                     <? endif; ?>
@@ -323,7 +323,7 @@ table tbody td {
 					          ?>
                     <p>
             <input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)nvidia_extract_version($lines2)); ?>" value="<?php echo htmlspecialchars((string)$lines2);?>" <?php echo ( $selected_v == $lines2) ? 'checked="checked"' : '' ?>/> 
-						v<?php echo $lines2;?>
+            <?php echo htmlspecialchars("v" . $lines2, ENT_QUOTES, 'UTF-8');?>
 					          </p>
                     <?php
 					          }
