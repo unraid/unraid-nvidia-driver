@@ -158,6 +158,9 @@ function applyDriverOptionSupport(rows) {
     }
 
     var incompatibleAll = (supportedAll.size === 0);
+    var hasOpenOnly = rows.some(function(row) {
+      return String((row && row.kernel_module_support) || '').toLowerCase() === 'open-only';
+    });
     var options = document.querySelectorAll('input[name="drv_version"]');
     options.forEach(function(option) {
       var mappedVersion = option.getAttribute('data-driver-version');
@@ -166,6 +169,9 @@ function applyDriverOptionSupport(rows) {
       }
 
       var isSupported = incompatibleAll ? false : supportedAll.has(mappedVersion);
+      if (hasOpenOnly && option.value !== 'latest_nos') {
+        isSupported = false;
+      }
       option.disabled = !isSupported;
       var parent = option.closest('p');
       if (parent) {
