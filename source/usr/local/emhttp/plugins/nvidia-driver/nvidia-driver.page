@@ -322,7 +322,7 @@ table tbody td {
                     $lines2 = implode(" ", $arr);
 					          ?>
                     <p>
-            <input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)nvidia_extract_version($lines2)); ?>" value="<?php echo $lines2;?>" <?php echo ( $selected_v == $lines2) ? 'checked="checked"' : '' ?>/> 
+            <input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)nvidia_extract_version($lines2)); ?>" value="<?php echo htmlspecialchars((string)$lines2);?>" <?php echo ( $selected_v == $lines2) ? 'checked="checked"' : '' ?>/> 
 						v<?php echo $lines2;?>
 					          </p>
                     <?php
