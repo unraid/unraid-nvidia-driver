@@ -28,6 +28,8 @@ jobs:
         CUR_NFB="$(jq -r '.branches.newfeature.current' versions.json)"
         CUR_BETA="$(jq -r '.branches.beta.current' versions.json)"
         CUR_LEGACY="$(jq -r '.branches.legacy.current' versions.json)"
+        CUR_CONTAINER_TOOLKIT="$(jq -r '.runtimes.containertoolkit.current' versions.json)"
+        CUR_LIBNVIDIA="$(jq -r '.runtimes.libnvidia.current' versions.json)"
 
         # Get driver versions
         RAW_DATA="$(wget -qO- https://www.nvidia.com/en-us/drivers/unix/ | tidy -quiet -wrap 4096 2>/dev/null | grep -A8 "Linux x86_64/AMD64/EM64T")"
@@ -59,6 +61,23 @@ jobs:
         if [ -z "${RAW_DATA}" ]; then
           exit 1
         fi
+
+        # Display driver versions
+        echo "Current versions:"
+        echo "Production Branch:   $CUR_PRB"
+        echo "New Feature Branch:  $CUR_NFB"
+        echo "Beta Branch:         $CUR_BETA"
+        echo "Legacy Branch:       $CUR_LEGACY"
+        echo "Container Toolkit:   $CUR_CONTAINER_TOOLKIT"
+        echo "libnvidia Container: $CUR_LIBNVIDIA"
+        echo
+        echo "Newly grabbed versions:"
+        echo "Production Branch:   $PRB"
+        echo "New Feature Branch:  $NFB"
+        echo "Beta Branch:         $BETA"
+        echo "Legacy Branch:       $LEGACY"
+        echo "Container Toolkit:   $CONTAINER_TOOLKIT"
+        echo "libnvidia Container: $LIBNVIDIA"
 
         # Make sure jq command is valid even if nothing changed
         JQ_COMMAND='.'
