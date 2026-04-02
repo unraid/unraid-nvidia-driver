@@ -34,7 +34,7 @@ jobs:
         PRB="$(echo "${RAW_DATA}" | grep -i "Latest Production Branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
         NFB="$(echo "${RAW_DATA}" | grep -i "Latest New Feature Branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
         BETA="$(echo "${RAW_DATA}" | grep -i "Latest Beta" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
-        LEGACY="$(echo "${RAW_DATA}" | grep -i "Latest Legacy" | grep "(4" | head -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+        LEGACY="$(echo "${RAW_DATA}" | grep -i "Latest Legacy" | grep "(58" | head -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
 
         # Fall back to alternative URL to get versions
         if [ -z "${RAW_DATA}" ]; then
@@ -42,7 +42,13 @@ jobs:
           PRB="$(echo "${RAW_DATA}" | grep -i "^Current production branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
           NFB="$(echo "${RAW_DATA}" | grep -i "^Current new feature branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
           BETA="$(echo "${RAW_DATA}" | grep -i "^Current beta" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
-          LEGACY="$(echo "${RAW_DATA}" | grep -i -A1 '>Legacy releases' | tail -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+          LEGACY="$(echo "${RAW_DATA}" | grep -i -A1 '>Legacy releases' | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' | tail -1)"
+        fi
+
+        # Fallback for "new" legacy driver (since it seems Nvidia didn't update their main site with the "new" 580.x legacy drivers - still the old ones 470.x)
+        if [ -z "$LEGACY" ] ; then
+          RAW_DATA="$(wget -qO- https://forums.developer.nvidia.com/t/current-graphics-driver-releases/28500 | tidy -quiet -wrap 4096 2>/dev/null || true)"
+          LEGACY="$(echo "${RAW_DATA}" | grep -i -A1 '>Legacy releases' | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' | tail -1)"
         fi
 
         #Get latest containertoolkit and libnvida versions
