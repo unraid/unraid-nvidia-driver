@@ -5,7 +5,7 @@ Icon="nvidia-driver.png"
 <?php
 require_once '/usr/local/emhttp/plugins/nvidia-driver/include/card-support.php';
 
-$selected_v = shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_selected_version");
+$selected_v = trim(shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_selected_version"));
 shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh update');
 
 $latest_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_latest_version');
@@ -14,33 +14,31 @@ $latest_nfb_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec
 $latest_beta_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_beta');
 $latest_nos_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nos');
 
-$module_license = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_license');
+$module_license = trim(shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_license'));
 $installed_v = trim(shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_installed_version'));
 $cuda_v = trim(shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_cuda_version'));
 $update_check = shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh update_check");
 $kernel_v = php_uname('r');
 $unraid_version = parse_ini_file('/etc/unraid-version');
 
-// Query all GPUs via gpu-support.php for multi-GPU detection
 $gpu_support_json = shell_exec('php /usr/local/emhttp/plugins/nvidia-driver/include/gpu-support.php 2>/dev/null');
 $gpu_support = json_decode(trim($gpu_support_json), true);
 $gpu_rows = ($gpu_support && isset($gpu_support['ok']) && $gpu_support['ok']) ? $gpu_support['rows'] : array();
 
-// Compute module support intersection across all GPUs
-$has_proprietary_only = false;
+$has_legacy_only = false;
 $has_open_only = false;
 foreach ($gpu_rows as $row) {
   $support = $row['kernel_module_support'] ?? 'unknown';
-  if ($support === 'proprietary-only') $has_proprietary_only = true;
+  if ($support === 'proprietary-only') $has_legacy_only = true;
   if ($support === 'open-only') $has_open_only = true;
 }
-$is_conflict = $has_proprietary_only && $has_open_only;
-$force_opensource = $has_open_only && !$has_proprietary_only;
-$force_legacy = $has_proprietary_only && !$has_open_only;
+$is_conflict = $has_legacy_only && $has_open_only;
+$force_opensource = $has_open_only && !$has_legacy_only;
+$force_legacy = $has_legacy_only && !$has_open_only;
 
 $module_type_display = 'Unknown';
-if (trim($module_license) === 'OPENSOURCE') $module_type_display = 'Open Source';
-elseif (trim($module_license) === 'PROPRIETARY') $module_type_display = 'Legacy (Proprietary)';
+if ($module_license === 'OPENSOURCE') $module_type_display = 'Open Source';
+elseif ($module_license === 'PROPRIETARY') $module_type_display = 'Legacy (Proprietary)';
 
 if (empty($installed_v)) {
   $installed_v = trim(shell_exec("nvidia-smi 2>/dev/null | grep 'Driver Version' | grep -oE '[0-9]+\\.[0-9]+\\.?[0-9]*' | head -1"));
@@ -58,7 +56,7 @@ if (file_exists("/tmp/nvos_driver")) {
   if ($nvos_lines !== false) $nvos_versions = $nvos_lines;
 }
 
-$is_opensource_selected = ($force_opensource || trim($module_license) === 'OPENSOURCE' || trim($selected_v) === 'latest_nos');
+$is_opensource_selected = ($force_opensource || $module_license === 'OPENSOURCE' || $selected_v === 'latest_nos');
 ?>
 
 <style>
@@ -182,19 +180,19 @@ details.nv-branch dd {
   border-radius: 3px;
   font-weight: 600;
 }
-.nv-tag-open-only { background: #e8f5e9; color: #2e7d32; }
-.nv-tag-both { background: #e3f2fd; color: #1565c0; }
-.nv-tag-proprietary-only { background: #fff3e0; color: #e65100; }
-.nv-tag-unknown { background: #f5f5f5; color: #757575; }
+.nv-tag-open-only { background: var(--mild-background-color, #e8f5e9); color: var(--text-color, #2e7d32); }
+.nv-tag-both { background: var(--mild-background-color, #e3f2fd); color: var(--text-color, #1565c0); }
+.nv-tag-proprietary-only { background: var(--mild-background-color, #fff3e0); color: var(--text-color, #e65100); }
+.nv-tag-unknown { background: var(--mild-background-color, #f5f5f5); color: var(--alt-text-color, #757575); }
 
 .nv-error {
-  background: #ffebee;
-  border: 1px solid #ef5350;
+  background: var(--table-background-color, #ffebee);
+  border: 1px solid var(--border-color, #ef5350);
   border-left: 4px solid #d32f2f;
   border-radius: 4px;
   padding: 10px 14px;
   margin: 10px 0;
-  color: #b71c1c;
+  color: var(--text-color, #b71c1c);
 }
 </style>
 
@@ -234,7 +232,6 @@ function filterVersions() {
     }
   }
 
-  // No more inline blackwell warning needed — handled by PHP conflict/force detection
   updateAutoUpdate();
 }
 
@@ -334,24 +331,24 @@ $(function() { filterVersions(); });
         <label for="drv_version">Version</label>
         <select name="drv_version" id="drv_version" onchange="updateAutoUpdate()">
           <optgroup label="Follow Branch (auto-update)" data-group="branch">
-            <?php echo mk_option(trim($selected_v), 'latest', 'Latest — v'.$latest_v); ?>
-            <?php if (!empty(trim($latest_prb_v))) echo mk_option(trim($selected_v), 'latest_prb', 'Production — v'.$latest_prb_v); ?>
-            <?php if (!empty(trim($latest_nfb_v))) echo mk_option(trim($selected_v), 'latest_nfb', 'New Feature — v'.$latest_nfb_v); ?>
-            <?php if (!empty(trim($latest_beta_v))) echo mk_option(trim($selected_v), 'latest_beta', 'Beta — v'.$latest_beta_v); ?>
-            <?php if (!empty(trim($latest_nos_v))) echo mk_option(trim($selected_v), 'latest_nos', 'Open Source — v'.$latest_nos_v); ?>
+            <?php echo mk_option($selected_v, 'latest', 'Latest — v'.$latest_v); ?>
+            <?php if (!empty(trim($latest_prb_v))) echo mk_option($selected_v, 'latest_prb', 'Production — v'.$latest_prb_v); ?>
+            <?php if (!empty(trim($latest_nfb_v))) echo mk_option($selected_v, 'latest_nfb', 'New Feature — v'.$latest_nfb_v); ?>
+            <?php if (!empty(trim($latest_beta_v))) echo mk_option($selected_v, 'latest_beta', 'Beta — v'.$latest_beta_v); ?>
+            <?php if (!empty(trim($latest_nos_v))) echo mk_option($selected_v, 'latest_nos', 'Open Source — v'.$latest_nos_v); ?>
           </optgroup>
           <optgroup label="Pin Specific Version (kernel <?php echo $kernel_v; ?>)" data-group="pin">
             <?php
             $sorted = $eachlines; krsort($sorted);
             foreach ($sorted as $line) {
               $ver = trim($line);
-              if (!empty($ver)) echo mk_option(trim($selected_v), $ver, 'v'.$ver, 'data-type="proprietary"');
+              if (!empty($ver)) echo mk_option($selected_v, $ver, 'v'.$ver, 'data-type="proprietary"');
             }
             if (!empty($nvos_versions)) {
               $nvos_sorted = $nvos_versions; rsort($nvos_sorted, SORT_NATURAL);
               foreach ($nvos_sorted as $nv) {
                 $ver = trim($nv);
-                if (!empty($ver)) echo mk_option(trim($selected_v), $ver, 'v'.$ver, 'data-type="opensource"');
+                if (!empty($ver)) echo mk_option($selected_v, $ver, 'v'.$ver, 'data-type="opensource"');
               }
             }
             ?>
