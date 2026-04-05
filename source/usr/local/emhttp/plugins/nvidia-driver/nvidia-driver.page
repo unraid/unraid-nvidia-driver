@@ -29,11 +29,10 @@ $gpu_rows = ($gpu_support && isset($gpu_support['ok']) && $gpu_support['ok']) ? 
 // Compute module support intersection across all GPUs
 $has_proprietary_only = false;
 $has_open_only = false;
-$is_blackwell = false;
 foreach ($gpu_rows as $row) {
   $support = $row['kernel_module_support'] ?? 'unknown';
   if ($support === 'proprietary-only') $has_proprietary_only = true;
-  if ($support === 'open-only') { $has_open_only = true; $is_blackwell = true; }
+  if ($support === 'open-only') $has_open_only = true;
 }
 $is_conflict = $has_proprietary_only && $has_open_only;
 $force_opensource = $has_open_only && !$has_proprietary_only;
@@ -186,6 +185,7 @@ details.nv-branch dd {
 .nv-tag-open-only { background: #e8f5e9; color: #2e7d32; }
 .nv-tag-both { background: #e3f2fd; color: #1565c0; }
 .nv-tag-proprietary-only { background: #fff3e0; color: #e65100; }
+.nv-tag-unknown { background: #f5f5f5; color: #757575; }
 
 .nv-error {
   background: #ffebee;
@@ -269,7 +269,8 @@ $(function() { filterVersions(); });
           $support = $gpu['kernel_module_support'] ?? 'unknown';
           $tag_class = 'nv-tag-' . str_replace(' ', '-', $support);
           $tag_text = $support === 'open-only' ? 'Open Source only' :
-                     ($support === 'proprietary-only' ? 'Legacy (Proprietary only)' : 'Open Source / Legacy');
+                     ($support === 'proprietary-only' ? 'Legacy (Proprietary only)' :
+                     ($support === 'both' ? 'Open Source / Legacy' : 'Unknown'));
         ?>
         <details class="nv-gpu-details">
           <summary>
@@ -293,7 +294,9 @@ $(function() { filterVersions(); });
             <?php endif; ?>
             <?php if (!empty($gpu['valid_drivers'])): ?>
             <div>Supported candidates: <b><?php echo htmlspecialchars(implode(', ', $gpu['valid_drivers'])); ?></b></div>
-            <div>Recommended Driver: <b><?php echo htmlspecialchars($gpu['recommended_driver'] ?? ''); ?></b> (<?php echo htmlspecialchars($gpu['recommendation_source'] ?? ''); ?>)</div>
+            <?php endif; ?>
+            <?php if (!empty($gpu['recommended_driver'])): ?>
+            <div>Recommended Driver: <b><?php echo htmlspecialchars($gpu['recommended_driver']); ?></b> (<?php echo htmlspecialchars($gpu['recommendation_source'] ?? ''); ?>)</div>
             <?php endif; ?>
           </div>
         </details>
@@ -357,7 +360,7 @@ $(function() { filterVersions(); });
       </div>
       <div class="nv-form-row">
         <label></label>
-        <input type="button" value="Update &amp; Download" onclick="changeVersion(this.form)">
+        <input type="button" value="Update &amp; Download" onclick="changeVersion(this.form)" <?php echo $is_conflict ? 'disabled title="Incompatible GPU combination"' : ''; ?>>
       </div>
     </form>
     <details class="nv-branch">
