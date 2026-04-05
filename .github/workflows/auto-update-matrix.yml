@@ -69,19 +69,7 @@ jobs:
           fi
 
           # Pick the latest patch version per major.minor branch
-          KERNEL_TAGS=""
-          SEEN_BRANCHES=""
-          while IFS= read -r tag; do
-            BRANCH=$(echo "$tag" | grep -oE '^[0-9]+\.[0-9]+')
-            if ! echo "$SEEN_BRANCHES" | grep -qx "$BRANCH"; then
-              SEEN_BRANCHES="${SEEN_BRANCHES}${BRANCH}
-"
-              KERNEL_TAGS="${KERNEL_TAGS}${tag}
-"
-            fi
-          done <<< "$ALL_TAGS"
-
-          KERNEL_TAGS=$(echo "$KERNEL_TAGS" | sed '/^$/d')
+          KERNEL_TAGS=$(echo "$ALL_TAGS" | awk -F'[.-]' '!seen[$1"."$2]++')
           KERNEL_JSON=$(echo "$KERNEL_TAGS" | jq -R -c -s 'split("\n") | map(select(length > 0))')
           echo "kernels=${KERNEL_JSON}" >> "$GITHUB_OUTPUT"
           echo "Detected kernels: ${KERNEL_JSON}"
