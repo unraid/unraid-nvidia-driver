@@ -55,18 +55,33 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Get kernel tags from upstream releases (format: 6.x.y-Unraid)
-          KERNEL_TAGS=$(gh api repos/unraid/unraid-nvidia-driver/releases \
+          # Keep the latest kernel per major.minor branch (e.g. 6.12.x, 6.17.x, 6.18.x)
+          # so all active Unraid versions are covered
+          ALL_TAGS=$(gh api repos/unraid/unraid-nvidia-driver/releases \
             --paginate --jq '.[].tag_name' 2>/dev/null \
             | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-Unraid$' \
-            | sort -t. -k1,1nr -k2,2nr -k3,3nr \
-            | head -2)
+            | sort -t. -k1,1nr -k2,2nr -k3,3nr)
 
-          if [ -z "$KERNEL_TAGS" ]; then
+          if [ -z "$ALL_TAGS" ]; then
             echo "::warning::No kernel tags found, keeping current kernel_versions"
             echo "kernels=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          # Pick the latest patch version per major.minor branch
+          KERNEL_TAGS=""
+          SEEN_BRANCHES=""
+          while IFS= read -r tag; do
+            BRANCH=$(echo "$tag" | grep -oE '^[0-9]+\.[0-9]+')
+            if ! echo "$SEEN_BRANCHES" | grep -qx "$BRANCH"; then
+              SEEN_BRANCHES="${SEEN_BRANCHES}${BRANCH}
+"
+              KERNEL_TAGS="${KERNEL_TAGS}${tag}
+"
+            fi
+          done <<< "$ALL_TAGS"
+
+          KERNEL_TAGS=$(echo "$KERNEL_TAGS" | sed '/^$/d')
           KERNEL_JSON=$(echo "$KERNEL_TAGS" | jq -R -c -s 'split("\n") | map(select(length > 0))')
           echo "kernels=${KERNEL_JSON}" >> "$GITHUB_OUTPUT"
           echo "Detected kernels: ${KERNEL_JSON}"
