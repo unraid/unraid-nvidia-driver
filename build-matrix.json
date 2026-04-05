@@ -2,7 +2,8 @@
   "gcc_tag": "gcc_14.2.0",
   "kernel_versions": [
     "6.18.20-Unraid",
-    "6.18.19-Unraid"
+    "6.18.19-Unraid",
+    "6.12.54-Unraid"
   ],
   "branches": {
     "production": {

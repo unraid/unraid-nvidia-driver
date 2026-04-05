@@ -69,8 +69,8 @@ jobs:
             exit 0
           fi
 
-          # Pick the latest patch version per major.minor branch
-          KERNEL_TAGS=$(echo "$ALL_TAGS" | awk -F'[.-]' '!seen[$1"."$2]++')
+          # Pick the latest patch version per major.minor branch, keep top 3
+          KERNEL_TAGS=$(echo "$ALL_TAGS" | awk -F'[.-]' '!seen[$1"."$2]++' | head -3)
           KERNEL_JSON=$(echo "$KERNEL_TAGS" | jq -R -c -s 'split("\n") | map(select(length > 0))')
           echo "kernels=${KERNEL_JSON}" >> "$GITHUB_OUTPUT"
           echo "Detected kernels: ${KERNEL_JSON}"
