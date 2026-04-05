@@ -88,9 +88,11 @@ jobs:
         run: mkdir -p output
 
       - name: Build package in container
+        id: build
         if: steps.check-existing.outputs.skip != 'true'
         run: |
           docker pull ghcr.io/ich777/unraid_kernel:${{ needs.prepare.outputs.gcc_tag }}
+          EXIT_CODE=0
           docker run --rm \
             --entrypoint bash \
             -v "$GITHUB_WORKSPACE":/workspace \
@@ -170,10 +172,20 @@ jobs:
 
               echo "=== Build artifacts ==="
               ls -la /output/
-            '
+            ' || EXIT_CODE=$?
+
+          if [ "$EXIT_CODE" -eq 8 ]; then
+            echo "::warning::Driver ${{ matrix.driver_version }} is not compatible with kernel ${{ matrix.kernel_version }}, skipping"
+            echo "incompatible=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EXIT_CODE" -ne 0 ]; then
+            echo "::error::Build failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          else
+            echo "incompatible=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Verify build output
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.build.outputs.incompatible != 'true'
         run: |
           ls -la output/
           if [ -z "$(ls output/*.txz 2>/dev/null)" ]; then
@@ -195,7 +207,7 @@ jobs:
           done
 
       - name: Upload artifact
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.build.outputs.incompatible != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.module_type == 'opensource' && 'nvos' || 'nvidia' }}-${{ matrix.driver_version }}-${{ matrix.kernel_version }}
@@ -203,7 +215,7 @@ jobs:
           retention-days: 90
 
       - name: Create or update GitHub Release
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.build.outputs.incompatible != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
