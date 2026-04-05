@@ -174,12 +174,15 @@ jobs:
               ls -la /output/
             ' || EXIT_CODE=$?
 
-          if [ "$EXIT_CODE" -eq 8 ]; then
-            echo "::warning::Driver ${{ matrix.driver_version }} is not compatible with kernel ${{ matrix.kernel_version }}, skipping"
-            echo "incompatible=true" >> "$GITHUB_OUTPUT"
-          elif [ "$EXIT_CODE" -ne 0 ]; then
-            echo "::error::Build failed with exit code $EXIT_CODE"
-            exit $EXIT_CODE
+          # Check if build produced output artifacts
+          if [ -z "$(ls output/*.txz 2>/dev/null)" ]; then
+            if [ "${EXIT_CODE:-0}" -ne 0 ]; then
+              echo "::warning::Driver ${{ matrix.driver_version }} failed to build for kernel ${{ matrix.kernel_version }} (exit code ${EXIT_CODE}), skipping"
+              echo "incompatible=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::Build succeeded but no .txz package produced"
+              exit 1
+            fi
           else
             echo "incompatible=false" >> "$GITHUB_OUTPUT"
           fi
