@@ -16,29 +16,32 @@ $latest_nos_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec
 
 $module_license = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_license');
 $installed_v = trim(shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_installed_version'));
-$gpu_arch = trim(shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_gpu_arch'));
 $cuda_v = trim(shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_cuda_version'));
 $update_check = shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh update_check");
 $kernel_v = php_uname('r');
 $unraid_version = parse_ini_file('/etc/unraid-version');
 
+// Query all GPUs via gpu-support.php for multi-GPU detection
+$gpu_support_json = shell_exec('php /usr/local/emhttp/plugins/nvidia-driver/include/gpu-support.php 2>/dev/null');
+$gpu_support = json_decode(trim($gpu_support_json), true);
+$gpu_rows = ($gpu_support && isset($gpu_support['ok']) && $gpu_support['ok']) ? $gpu_support['rows'] : array();
+
+// Compute module support intersection across all GPUs
+$has_proprietary_only = false;
+$has_open_only = false;
 $is_blackwell = false;
-$arch_name = '';
-if (!empty($gpu_arch)) {
-  $arch_num = floatval($gpu_arch);
-  $is_blackwell = ($arch_num >= 10.0);
-  if ($arch_num >= 10.0) $arch_name = 'Blackwell';
-  elseif ($arch_num >= 8.9) $arch_name = 'Ada Lovelace';
-  elseif ($arch_num >= 8.0) $arch_name = 'Ampere';
-  elseif ($arch_num >= 7.5) $arch_name = 'Turing';
-  elseif ($arch_num >= 7.0) $arch_name = 'Volta';
-  elseif ($arch_num >= 6.0) $arch_name = 'Pascal';
-  else $arch_name = 'Legacy';
+foreach ($gpu_rows as $row) {
+  $support = $row['kernel_module_support'] ?? 'unknown';
+  if ($support === 'proprietary-only') $has_proprietary_only = true;
+  if ($support === 'open-only') { $has_open_only = true; $is_blackwell = true; }
 }
+$is_conflict = $has_proprietary_only && $has_open_only;
+$force_opensource = $has_open_only && !$has_proprietary_only;
+$force_legacy = $has_proprietary_only && !$has_open_only;
 
 $module_type_display = 'Unknown';
 if (trim($module_license) === 'OPENSOURCE') $module_type_display = 'Open Source';
-elseif (trim($module_license) === 'PROPRIETARY') $module_type_display = 'Proprietary';
+elseif (trim($module_license) === 'PROPRIETARY') $module_type_display = 'Legacy (Proprietary)';
 
 if (empty($installed_v)) {
   $installed_v = trim(shell_exec("nvidia-smi 2>/dev/null | grep 'Driver Version' | grep -oE '[0-9]+\\.[0-9]+\\.?[0-9]*' | head -1"));
@@ -56,10 +59,7 @@ if (file_exists("/tmp/nvos_driver")) {
   if ($nvos_lines !== false) $nvos_versions = $nvos_lines;
 }
 
-$gpu_list = trim(shell_exec("nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null"));
-$gpu_entries = !empty($gpu_list) ? explode("\n", $gpu_list) : array();
-
-$is_opensource_selected = ($is_blackwell || trim($module_license) === 'OPENSOURCE' || trim($selected_v) === 'latest_nos');
+$is_opensource_selected = ($force_opensource || trim($module_license) === 'OPENSOURCE' || trim($selected_v) === 'latest_nos');
 ?>
 
 <style>
@@ -165,6 +165,37 @@ details.nv-branch dd {
   margin-right: 16px;
   color: var(--link-text-color, var(--text-color, #1565c0));
 }
+
+.nv-gpu-details { margin: 4px 0; }
+.nv-gpu-details summary { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.nv-gpu-details[open] summary { margin-bottom: 8px; }
+.nv-gpu-info {
+  padding: 10px 14px;
+  background: var(--mild-background-color, #f5f5f5);
+  border-radius: 4px;
+  font-size: 0.9em;
+  line-height: 1.8;
+  color: var(--text-color, #333);
+}
+.nv-gpu-tag {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+.nv-tag-open-only { background: #e8f5e9; color: #2e7d32; }
+.nv-tag-both { background: #e3f2fd; color: #1565c0; }
+.nv-tag-proprietary-only { background: #fff3e0; color: #e65100; }
+
+.nv-error {
+  background: #ffebee;
+  border: 1px solid #ef5350;
+  border-left: 4px solid #d32f2f;
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin: 10px 0;
+  color: #b71c1c;
+}
 </style>
 
 <script>
@@ -203,8 +234,7 @@ function filterVersions() {
     }
   }
 
-  var w = document.getElementById('blackwell-warning');
-  if (w) w.style.display = (mt === 'proprietary' && <?php echo $is_blackwell ? 'true' : 'false'; ?>) ? '' : 'none';
+  // No more inline blackwell warning needed — handled by PHP conflict/force detection
   updateAutoUpdate();
 }
 
@@ -232,20 +262,49 @@ $(function() { filterVersions(); });
       <?php if (!empty($cuda_v)): ?>
       <div><div class="nv-label">CUDA Version</div><div class="nv-val"><?php echo $cuda_v; ?></div></div>
       <?php endif; ?>
-      <?php if (!empty($gpu_arch)): ?>
-      <div><div class="nv-label">GPU Architecture</div><div class="nv-val"><?php echo $gpu_arch; ?> (<?php echo $arch_name; ?>)</div></div>
-      <?php endif; ?>
       <div><div class="nv-label">Kernel</div><div class="nv-val"><?php echo $kernel_v; ?></div></div>
-      <?php if (!empty($gpu_entries)): ?>
+      <?php if (!empty($gpu_rows)): ?>
       <div class="nv-grid-full"><div class="nv-label">Installed GPU(s)</div>
-        <?php foreach ($gpu_entries as $gpu): ?>
-        <div class="nv-val"><?php echo htmlspecialchars(trim($gpu)); ?></div>
+        <?php foreach ($gpu_rows as $gpu):
+          $support = $gpu['kernel_module_support'] ?? 'unknown';
+          $tag_class = 'nv-tag-' . str_replace(' ', '-', $support);
+          $tag_text = $support === 'open-only' ? 'Open Source only' :
+                     ($support === 'proprietary-only' ? 'Legacy (Proprietary only)' : 'Open Source / Legacy');
+        ?>
+        <details class="nv-gpu-details">
+          <summary>
+            <span class="nv-val"><?php echo htmlspecialchars($gpu['gpu_name'] ?? 'Unknown GPU'); ?></span>
+            <span class="nv-gpu-tag <?php echo $tag_class; ?>"><?php echo $tag_text; ?></span>
+          </summary>
+          <div class="nv-gpu-info">
+            <div>Detected via: <?php echo htmlspecialchars($gpu['detection_source'] ?? 'unknown'); ?></div>
+            <?php if (!empty($gpu['chip_codename'])): ?>
+            <div>Chip codename: <?php echo htmlspecialchars($gpu['chip_codename']); ?></div>
+            <?php endif; ?>
+            <?php if (!empty($gpu['architecture'])): ?>
+            <div>Architecture: <?php echo htmlspecialchars($gpu['architecture']); ?></div>
+            <?php endif; ?>
+            <div>Kernel module support: <b><?php echo htmlspecialchars($support); ?></b></div>
+            <?php if (!empty($gpu['gpu_input_device_id'])): ?>
+            <div>Device ID input: <?php echo htmlspecialchars($gpu['gpu_input_device_id']); ?></div>
+            <?php endif; ?>
+            <?php if (!empty($gpu['device_id'])): ?>
+            <div>Normalized ID: <?php echo htmlspecialchars($gpu['device_id']); ?></div>
+            <?php endif; ?>
+            <?php if (!empty($gpu['valid_drivers'])): ?>
+            <div>Supported candidates: <b><?php echo htmlspecialchars(implode(', ', $gpu['valid_drivers'])); ?></b></div>
+            <div>Recommended Driver: <b><?php echo htmlspecialchars($gpu['recommended_driver'] ?? ''); ?></b> (<?php echo htmlspecialchars($gpu['recommendation_source'] ?? ''); ?>)</div>
+            <?php endif; ?>
+          </div>
+        </details>
         <?php endforeach; ?>
       </div>
       <?php endif; ?>
     </div>
-    <?php if ($is_blackwell): ?>
-    <div class="nv-warn"><b>Blackwell GPU detected (sm_<?php echo str_replace('.', '', $gpu_arch); ?>):</b> This GPU architecture requires Open Source kernel modules. Proprietary modules will not load.</div>
+    <?php if ($is_conflict): ?>
+    <div class="nv-error"><b>Incompatible GPU combination:</b> Your system has GPUs that require different kernel module types. One GPU requires proprietary modules while another requires open-source modules. Both cannot run simultaneously with the same driver module type.</div>
+    <?php elseif ($force_opensource): ?>
+    <div class="nv-warn"><b>Open Source kernel modules required:</b> Your GPU architecture only supports open-source kernel modules.</div>
     <?php endif; ?>
   </div>
 
@@ -253,14 +312,21 @@ $(function() { filterVersions(); });
   <div class="nv-card">
     <h2>Driver Selection</h2>
     <form name="nvidia_driver_settings" method="POST">
+      <?php if (!$force_opensource && !$force_legacy && !$is_conflict): ?>
       <div class="nv-form-row">
         <label for="module_type">Module Type</label>
         <select id="module_type" onchange="filterVersions()">
-          <?php echo mk_option($is_opensource_selected ? 'opensource' : 'proprietary', 'opensource', 'Open Source Kernel Module'); ?>
-          <?php echo mk_option($is_opensource_selected ? 'opensource' : 'proprietary', 'proprietary', 'Proprietary Kernel Module'); ?>
+          <?php echo mk_option($is_opensource_selected ? 'opensource' : 'proprietary', 'opensource', 'Open Source'); ?>
+          <?php echo mk_option($is_opensource_selected ? 'opensource' : 'proprietary', 'proprietary', 'Legacy (Proprietary)'); ?>
         </select>
       </div>
-      <div id="blackwell-warning" class="nv-warn" style="display:none">Your GPU requires Open Source kernel modules. Proprietary modules will not load on Blackwell GPUs.</div>
+      <?php else: ?>
+      <input type="hidden" id="module_type" value="<?php echo $force_legacy ? 'proprietary' : 'opensource'; ?>">
+      <div class="nv-form-row">
+        <label>Module Type</label>
+        <span class="nv-val"><?php echo $force_legacy ? 'Legacy (Proprietary)' : 'Open Source'; ?></span>
+      </div>
+      <?php endif; ?>
       <div class="nv-form-row">
         <label for="drv_version">Version</label>
         <select name="drv_version" id="drv_version" onchange="updateAutoUpdate()">
