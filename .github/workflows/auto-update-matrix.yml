@@ -39,7 +39,7 @@ jobs:
             LEGACY="$(echo "${RAW_DATA}" | grep -i -A1 '>Legacy releases' | tail -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
           fi
 
-          if [ -z "${RAW_DATA}" ]; then
+          if [ -z "${RAW_DATA}" ] || { [ -z "${PRB}" ] && [ -z "${NFB}" ]; }; then
             echo "::error::Failed to fetch NVIDIA driver data from both sources"
             exit 1
           fi
@@ -144,7 +144,7 @@ jobs:
             else . end)
 
             # Rotate production: old version → extra_builds, set new version
-            | (if ($new_prb != "") and ($cur_prb != $new_prb) then
+            | (if ($new_prb != "") and ($cur_prb != "") and ($cur_prb != "null") and ($cur_prb != $new_prb) then
                 (if (.extra_builds | map(.driver_version) | index($cur_prb) | not) then
                   .extra_builds += [{"driver_version": $cur_prb, "module_types": ["proprietary", "opensource"]}]
                 else . end)
@@ -152,7 +152,7 @@ jobs:
               else . end)
 
             # Rotate newfeature: old version → extra_builds, set new version
-            | (if ($new_nfb != "") and ($cur_nfb != $new_nfb) then
+            | (if ($new_nfb != "") and ($cur_nfb != "") and ($cur_nfb != "null") and ($cur_nfb != $new_nfb) then
                 (if (.extra_builds | map(.driver_version) | index($cur_nfb) | not) then
                   .extra_builds += [{"driver_version": $cur_nfb, "module_types": ["proprietary", "opensource"]}]
                 else . end)
@@ -160,7 +160,7 @@ jobs:
               else . end)
 
             # Rotate beta: old version → extra_builds, set new version
-            | (if ($new_beta != "") and ($cur_beta != $new_beta) then
+            | (if ($new_beta != "") and ($cur_beta != "") and ($cur_beta != "null") and ($cur_beta != $new_beta) then
                 (if (.extra_builds | map(.driver_version) | index($cur_beta) | not) then
                   .extra_builds += [{"driver_version": $cur_beta, "module_types": ["proprietary", "opensource"]}]
                 else . end)
