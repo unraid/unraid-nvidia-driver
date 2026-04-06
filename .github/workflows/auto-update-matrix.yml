@@ -244,4 +244,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Changes committed, triggering build workflow..."
-          gh workflow run "Build NVIDIA Driver Packages" --repo ${{ github.repository }} --ref master
+          gh workflow run "Build NVIDIA Driver Packages" --repo ${{ github.repository }} --ref ${{ github.ref_name }}

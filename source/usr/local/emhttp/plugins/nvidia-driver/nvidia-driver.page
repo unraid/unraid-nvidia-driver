@@ -164,7 +164,10 @@ details.nv-branch dd {
 }
 
 .nv-gpu-details { margin: 4px 0; }
-.nv-gpu-details summary { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.nv-gpu-details summary { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 4px 0; list-style: none; }
+.nv-gpu-details summary::-webkit-details-marker { display: none; }
+.nv-gpu-chevron { font-size: 0.8em; transition: transform 0.2s; color: var(--alt-text-color, #888); }
+.nv-gpu-details[open] .nv-gpu-chevron { transform: rotate(90deg); }
 .nv-gpu-details[open] summary { margin-bottom: 8px; }
 .nv-gpu-info {
   padding: 10px 14px;
@@ -235,6 +238,13 @@ function filterVersions() {
   updateAutoUpdate();
 }
 
+function toggleManualOverride() {
+  var cb = document.getElementById('manual_override');
+  var mt = document.getElementById('module_type');
+  mt.disabled = !cb.checked;
+  if (!cb.checked) filterVersions();
+}
+
 function updateAutoUpdate() {
   var v = document.getElementById('drv_version').value;
   var ok = ['latest','latest_prb','latest_nfb','latest_beta','latest_nos'].indexOf(v) !== -1;
@@ -254,12 +264,12 @@ $(function() { filterVersions(); });
   <div class="nv-card nv-span">
     <h2>System Information</h2>
     <div class="nv-grid">
-      <div><div class="nv-label">Driver Version</div><div class="nv-val"><?php echo $installed_v; ?></div></div>
-      <div><div class="nv-label">Kernel Module</div><div class="nv-val"><?php echo $module_type_display; ?></div></div>
+      <div><div class="nv-label">Driver Version</div><div class="nv-val"><?php echo htmlspecialchars($installed_v); ?></div></div>
+      <div><div class="nv-label">Kernel Module</div><div class="nv-val"><?php echo htmlspecialchars($module_type_display); ?></div></div>
       <?php if (!empty($cuda_v)): ?>
-      <div><div class="nv-label">CUDA Version</div><div class="nv-val"><?php echo $cuda_v; ?></div></div>
+      <div><div class="nv-label">CUDA Version</div><div class="nv-val"><?php echo htmlspecialchars($cuda_v); ?></div></div>
       <?php endif; ?>
-      <div><div class="nv-label">Kernel</div><div class="nv-val"><?php echo $kernel_v; ?></div></div>
+      <div><div class="nv-label">Kernel</div><div class="nv-val"><?php echo htmlspecialchars($kernel_v); ?></div></div>
       <?php if (!empty($gpu_rows)): ?>
       <div class="nv-grid-full"><div class="nv-label">Installed GPU(s)</div>
         <?php foreach ($gpu_rows as $gpu):
@@ -271,6 +281,7 @@ $(function() { filterVersions(); });
         ?>
         <details class="nv-gpu-details">
           <summary>
+            <i class="fa fa-chevron-right nv-gpu-chevron"></i>
             <span class="nv-val"><?php echo htmlspecialchars($gpu['gpu_name'] ?? 'Unknown GPU'); ?></span>
             <span class="nv-gpu-tag <?php echo $tag_class; ?>"><?php echo $tag_text; ?></span>
           </summary>
@@ -312,19 +323,18 @@ $(function() { filterVersions(); });
   <div class="nv-card">
     <h2>Driver Selection</h2>
     <form name="nvidia_driver_settings" method="POST">
-      <?php if (!$force_opensource && !$force_legacy && !$is_conflict): ?>
+      <?php $gpu_forced = $force_opensource || $force_legacy || $is_conflict; ?>
       <div class="nv-form-row">
         <label for="module_type">Module Type</label>
-        <select id="module_type" onchange="filterVersions()">
+        <select id="module_type" onchange="filterVersions()" <?php echo $gpu_forced ? 'disabled' : ''; ?>>
           <?php echo mk_option($is_opensource_selected ? 'opensource' : 'proprietary', 'opensource', 'Open Source'); ?>
           <?php echo mk_option($is_opensource_selected ? 'opensource' : 'proprietary', 'proprietary', 'Legacy (Proprietary)'); ?>
         </select>
       </div>
-      <?php else: ?>
-      <input type="hidden" id="module_type" value="<?php echo $force_legacy ? 'proprietary' : 'opensource'; ?>">
+      <?php if ($gpu_forced): ?>
       <div class="nv-form-row">
-        <label>Module Type</label>
-        <span class="nv-val"><?php echo $force_legacy ? 'Legacy (Proprietary)' : 'Open Source'; ?></span>
+        <label></label>
+        <label style="min-width:auto"><input type="checkbox" id="manual_override" onchange="toggleManualOverride()"> Manual selection</label>
       </div>
       <?php endif; ?>
       <div class="nv-form-row">
@@ -339,7 +349,7 @@ $(function() { filterVersions(); });
           </optgroup>
           <optgroup label="Pin Specific Version (kernel <?php echo $kernel_v; ?>)" data-group="pin">
             <?php
-            $sorted = $eachlines; krsort($sorted);
+            $sorted = $eachlines; rsort($sorted, SORT_NATURAL);
             foreach ($sorted as $line) {
               $ver = trim($line);
               if (!empty($ver)) echo mk_option($selected_v, $ver, 'v'.$ver, 'data-type="proprietary"');
@@ -357,7 +367,7 @@ $(function() { filterVersions(); });
       </div>
       <div class="nv-form-row">
         <label></label>
-        <input type="button" value="Update &amp; Download" onclick="changeVersion(this.form)" <?php echo $is_conflict ? 'disabled title="Incompatible GPU combination"' : ''; ?>>
+        <input type="button" value="Update &amp; Download" onclick="changeVersion(this.form)">
       </div>
     </form>
     <details class="nv-branch">
@@ -382,7 +392,7 @@ $(function() { filterVersions(); });
     <form method="POST">
       <div class="nv-form-row">
         <label for="updata_check_selected">Check for updates</label>
-        <select name="updata_check_selected">
+        <select id="updata_check_selected" name="updata_check_selected">
           <?php echo mk_option($update_check, 'true', 'Enabled'); ?>
           <?php echo mk_option($update_check, 'false', 'Disabled'); ?>
         </select>
@@ -396,9 +406,9 @@ $(function() { filterVersions(); });
   <!-- Links -->
   <div class="nv-card nv-span nv-links">
     <span>
-      <a href="https://forums.unraid.net/topic/98978-plugin-nvidia-driver/" target="_blank"><i class="fa fa-comments-o"></i> Unraid Forum</a>
-      <a href="https://github.com/unraid/unraid-nvidia-driver" target="_blank"><i class="fa fa-github"></i> GitHub</a>
-      <a href="https://www.nvidia.com/en-us/drivers/unix/" target="_blank"><i class="fa fa-external-link"></i> Nvidia Driver Archive</a>
+      <a href="https://forums.unraid.net/topic/98978-plugin-nvidia-driver/" target="_blank" rel="noopener noreferrer"><i class="fa fa-comments-o"></i> Unraid Forum</a>
+      <a href="https://github.com/unraid/unraid-nvidia-driver" target="_blank" rel="noopener noreferrer"><i class="fa fa-github"></i> GitHub</a>
+      <a href="https://www.nvidia.com/en-us/drivers/unix/" target="_blank" rel="noopener noreferrer"><i class="fa fa-external-link"></i> Nvidia Driver Archive</a>
     </span>
   </div>
 
