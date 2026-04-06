@@ -9,6 +9,10 @@ permissions:
   contents: write
   actions: write
 
+concurrency:
+  group: auto-update-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   detect-and-update:
     runs-on: ubuntu-latest
