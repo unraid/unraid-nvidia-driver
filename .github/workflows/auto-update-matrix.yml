@@ -1,0 +1,253 @@
+name: Auto-detect and update build matrix
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # Daily at 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: auto-update-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect-and-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: sudo apt-get -y install jq tidy wget
+
+      - name: Detect NVIDIA driver versions
+        id: nvidia
+        run: |
+          RAW_DATA="$(wget -qO- https://www.nvidia.com/en-us/drivers/unix/ | tidy -quiet -wrap 4096 2>/dev/null | grep -A8 "Linux x86_64/AMD64/EM64T")"
+          PRB="$(echo "${RAW_DATA}" | grep -i "Latest Production Branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+          NFB="$(echo "${RAW_DATA}" | grep -i "Latest New Feature Branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+          BETA="$(echo "${RAW_DATA}" | grep -i "Latest Beta" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+          LEGACY="$(echo "${RAW_DATA}" | grep -i "Latest Legacy" | grep "(4" | head -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+
+          # Fallback to NVIDIA developer forum if fetch or parse failed
+          if [ -z "${RAW_DATA}" ] || { [ -z "${PRB}" ] && [ -z "${NFB}" ] && [ -z "${BETA}" ]; }; then
+            RAW_DATA="$(wget -qO- https://forums.developer.nvidia.com/t/current-graphics-driver-releases/28500 | tidy -quiet -wrap 4096 2>/dev/null || true)"
+            PRB="$(echo "${RAW_DATA}" | grep -i "^Current production branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+            NFB="$(echo "${RAW_DATA}" | grep -i "^Current new feature branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+            BETA="$(echo "${RAW_DATA}" | grep -i "^Current beta" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+            LEGACY="$(echo "${RAW_DATA}" | grep -i -A1 '>Legacy releases' | tail -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
+          fi
+
+          if [ -z "${RAW_DATA}" ] || { [ -z "${PRB}" ] && [ -z "${NFB}" ]; }; then
+            echo "::error::Failed to fetch NVIDIA driver data from both sources"
+            exit 1
+          fi
+
+          echo "prb=${PRB}" >> "$GITHUB_OUTPUT"
+          echo "nfb=${NFB}" >> "$GITHUB_OUTPUT"
+          echo "beta=${BETA}" >> "$GITHUB_OUTPUT"
+          echo "legacy=${LEGACY}" >> "$GITHUB_OUTPUT"
+          echo "Detected: PRB=${PRB} NFB=${NFB} BETA=${BETA} LEGACY=${LEGACY}"
+
+      - name: Detect latest Unraid kernel versions
+        id: kernels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get kernel tags from upstream releases (format: 6.x.y-Unraid)
+          # Keep the latest kernel per major.minor branch (e.g. 6.12.x, 6.17.x, 6.18.x)
+          # so all active Unraid versions are covered
+          ALL_TAGS=$(gh api repos/unraid/unraid-nvidia-driver/releases \
+            --paginate --jq '.[].tag_name' 2>/dev/null \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-Unraid$' \
+            | sort -t. -k1,1nr -k2,2nr -k3,3nr)
+
+          if [ -z "$ALL_TAGS" ]; then
+            echo "::warning::No kernel tags found, keeping current kernel_versions"
+            echo "kernels=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Pick the latest patch version per major.minor branch, keep top 3
+          KERNEL_TAGS=$(echo "$ALL_TAGS" | awk -F'[.-]' '!seen[$1"."$2]++' | head -3)
+          KERNEL_JSON=$(echo "$KERNEL_TAGS" | jq -R -c -s 'split("\n") | map(select(length > 0))')
+          echo "kernels=${KERNEL_JSON}" >> "$GITHUB_OUTPUT"
+          echo "Detected kernels: ${KERNEL_JSON}"
+
+      - name: Detect container runtime versions
+        id: runtimes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CONTAINER_TOOLKIT=$(gh api repos/unraid/nvidia-container-toolkit/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
+          LIBNVIDIA=$(gh api repos/unraid/libnvidia-container/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
+
+          # Ensure libnvidia-container matches toolkit version to prevent mismatches.
+          # Both repos release in sync; if versions differ, use the toolkit version
+          # and verify the matching libnvidia-container release exists.
+          if [ -n "${CONTAINER_TOOLKIT}" ] && [ -n "${LIBNVIDIA}" ] && [ "${CONTAINER_TOOLKIT}" != "${LIBNVIDIA}" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/unraid/libnvidia-container/releases/tags/${CONTAINER_TOOLKIT}")
+            if [ "${HTTP_CODE}" == "200" ]; then
+              LIBNVIDIA="${CONTAINER_TOOLKIT}"
+            fi
+          fi
+
+          echo "toolkit=${CONTAINER_TOOLKIT}" >> "$GITHUB_OUTPUT"
+          echo "libnvidia=${LIBNVIDIA}" >> "$GITHUB_OUTPUT"
+          echo "Detected: toolkit=${CONTAINER_TOOLKIT} libnvidia=${LIBNVIDIA}"
+
+      - name: Detect latest GCC tag
+        id: gcc
+        run: |
+          TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:ich777/unraid_kernel:pull" | jq -r '.token')
+          GCC_TAG=$(curl -s -H "Authorization: Bearer $TOKEN" "https://ghcr.io/v2/ich777/unraid_kernel/tags/list" \
+            | jq -r '.tags[]' | grep '^gcc_' | sort -V | tail -1)
+
+          if [ -z "${GCC_TAG}" ]; then
+            echo "::warning::Could not detect GCC tag, keeping current"
+            GCC_TAG=$(jq -r '.gcc_tag' build-matrix.json)
+          fi
+
+          echo "gcc_tag=${GCC_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Detected GCC tag: ${GCC_TAG}"
+
+      - name: Update build-matrix.json
+        env:
+          NEW_PRB: ${{ steps.nvidia.outputs.prb }}
+          NEW_NFB: ${{ steps.nvidia.outputs.nfb }}
+          NEW_BETA: ${{ steps.nvidia.outputs.beta }}
+          NEW_KERNELS: ${{ steps.kernels.outputs.kernels }}
+          NEW_GCC: ${{ steps.gcc.outputs.gcc_tag }}
+        run: |
+          CUR_PRB=$(jq -r '.branches.production.driver_version' build-matrix.json)
+          CUR_NFB=$(jq -r '.branches.newfeature.driver_version' build-matrix.json)
+          CUR_BETA=$(jq -r '.branches.beta.driver_version' build-matrix.json)
+
+          jq --arg new_prb "${NEW_PRB}" \
+             --arg new_nfb "${NEW_NFB}" \
+             --arg new_beta "${NEW_BETA}" \
+             --arg new_gcc "${NEW_GCC}" \
+             --arg cur_prb "${CUR_PRB}" \
+             --arg cur_nfb "${CUR_NFB}" \
+             --arg cur_beta "${CUR_BETA}" \
+             --argjson new_kernels "${NEW_KERNELS:-null}" \
+          '
+            # Update gcc_tag
+            (if ($new_gcc != "") then .gcc_tag = $new_gcc else . end)
+
+            # Update kernel versions if detected
+            | (if $new_kernels != null and ($new_kernels | length > 0) then
+              .kernel_versions = $new_kernels
+            else . end)
+
+            # Rotate production: old version → extra_builds, set new version
+            | (if ($new_prb != "") and ($cur_prb != "") and ($cur_prb != "null") and ($cur_prb != $new_prb) then
+                (if (.extra_builds | map(.driver_version) | index($cur_prb) | not) then
+                  .extra_builds += [{"driver_version": $cur_prb, "module_types": ["proprietary", "opensource"]}]
+                else . end)
+                | .branches.production.driver_version = $new_prb
+              else . end)
+
+            # Rotate newfeature: old version → extra_builds, set new version
+            | (if ($new_nfb != "") and ($cur_nfb != "") and ($cur_nfb != "null") and ($cur_nfb != $new_nfb) then
+                (if (.extra_builds | map(.driver_version) | index($cur_nfb) | not) then
+                  .extra_builds += [{"driver_version": $cur_nfb, "module_types": ["proprietary", "opensource"]}]
+                else . end)
+                | .branches.newfeature.driver_version = $new_nfb
+              else . end)
+
+            # Rotate beta: old version → extra_builds, set new version
+            | (if ($new_beta != "") and ($cur_beta != "") and ($cur_beta != "null") and ($cur_beta != $new_beta) then
+                (if (.extra_builds | map(.driver_version) | index($cur_beta) | not) then
+                  .extra_builds += [{"driver_version": $cur_beta, "module_types": ["proprietary", "opensource"]}]
+                else . end)
+                | .branches.beta.driver_version = $new_beta
+              else . end)
+
+            # Remove from extra_builds any version that is now a branch version
+            | . as $root | .extra_builds = [
+                .extra_builds[] |
+                select(
+                  .driver_version != ($root.branches.production.driver_version // "") and
+                  .driver_version != ($root.branches.newfeature.driver_version // "") and
+                  .driver_version != ($root.branches.beta.driver_version // "")
+                )
+              ]
+
+            # Deduplicate extra_builds
+            | .extra_builds = (.extra_builds | unique_by(.driver_version))
+          ' build-matrix.json > build-matrix.json.tmp
+          mv build-matrix.json.tmp build-matrix.json
+
+          echo "Updated build-matrix.json:"
+          cat build-matrix.json
+
+      - name: Update versions.json
+        env:
+          NEW_PRB: ${{ steps.nvidia.outputs.prb }}
+          NEW_NFB: ${{ steps.nvidia.outputs.nfb }}
+          NEW_BETA: ${{ steps.nvidia.outputs.beta }}
+          NEW_LEGACY: ${{ steps.nvidia.outputs.legacy }}
+          TOOLKIT: ${{ steps.runtimes.outputs.toolkit }}
+          LIBNVIDIA: ${{ steps.runtimes.outputs.libnvidia }}
+        run: |
+          CUR_PRB=$(jq -r '.branches.production.current' versions.json)
+          CUR_NFB=$(jq -r '.branches.newfeature.current' versions.json)
+
+          jq --arg prb "${NEW_PRB}" \
+             --arg nfb "${NEW_NFB}" \
+             --arg beta "${NEW_BETA}" \
+             --arg legacy "${NEW_LEGACY}" \
+             --arg last_prb "${CUR_PRB}" \
+             --arg last_nfb "${CUR_NFB}" \
+             --arg toolkit "${TOOLKIT}" \
+             --arg libnvidia "${LIBNVIDIA}" \
+          '
+            (if ($prb != "") then
+              .branches.production.current = $prb
+              | (if ($prb != $last_prb) then .branches.production.last_prb = $last_prb else . end)
+            else . end)
+            | (if ($nfb != "") then
+              .branches.newfeature.current = $nfb
+              | (if ($nfb != $last_nfb) then .branches.newfeature.last_nfb = $last_nfb else . end)
+            else . end)
+            | (if ($beta != "") then .branches.beta.current = $beta else . end)
+            | (if ($legacy != "") then .branches.legacy.current = $legacy else . end)
+            | (if ($toolkit | test("^[0-9]+(\\\\.[0-9]+)+$")) then .runtimes.containertoolkit.current = $toolkit else . end)
+            | (if ($libnvidia | test("^[0-9]+(\\\\.[0-9]+)+$")) then .runtimes.libnvidia.current = $libnvidia else . end)
+          ' versions.json > versions.json.tmp
+          mv versions.json.tmp versions.json
+
+      - name: Commit and push if changed
+        id: commit
+        run: |
+          if git diff --quiet; then
+            echo "No changes detected"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add build-matrix.json versions.json
+          git diff --cached --quiet && { echo "No staged changes"; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          git commit -m "auto-update: detect new driver/kernel versions"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger build workflow
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Changes committed, triggering build workflow..."
+          gh workflow run "Build NVIDIA Driver Packages" --repo ${{ github.repository }} --ref ${{ github.ref_name }}
