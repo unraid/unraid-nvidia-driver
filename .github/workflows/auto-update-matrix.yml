@@ -183,7 +183,8 @@ jobs:
 
             # Deduplicate extra_builds
             | .extra_builds = (.extra_builds | unique_by(.driver_version))
-          ' build-matrix.json > build-matrix.json.tmp && mv build-matrix.json.tmp build-matrix.json
+          ' build-matrix.json > build-matrix.json.tmp
+          mv build-matrix.json.tmp build-matrix.json
 
           echo "Updated build-matrix.json:"
           cat build-matrix.json
@@ -219,9 +220,10 @@ jobs:
             else . end)
             | (if ($beta != "") then .branches.beta.current = $beta else . end)
             | (if ($legacy != "") then .branches.legacy.current = $legacy else . end)
-            | (if ($toolkit != "" and ($toolkit | test("^[0-9]"))) then .runtimes.containertoolkit.current = $toolkit else . end)
-            | (if ($libnvidia != "" and ($libnvidia | test("^[0-9]"))) then .runtimes.libnvidia.current = $libnvidia else . end)
-          ' versions.json > versions.json.tmp && mv versions.json.tmp versions.json
+            | (if ($toolkit | test("^[0-9]+(\\\\.[0-9]+)+$")) then .runtimes.containertoolkit.current = $toolkit else . end)
+            | (if ($libnvidia | test("^[0-9]+(\\\\.[0-9]+)+$")) then .runtimes.libnvidia.current = $libnvidia else . end)
+          ' versions.json > versions.json.tmp
+          mv versions.json.tmp versions.json
 
       - name: Commit and push if changed
         id: commit
