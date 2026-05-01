@@ -16,6 +16,9 @@
 
 <CHANGES>
 
+###2026.05.01
+- Make sure to genereate CDI with nvidia-ctk on plugin installation/boot
+
 ###2026.03.26
 - Per‑GPU detection with detailed compatibility rows, recommendations, and diagnostics - by SimonF
 - UI enhancements: loading/errors for GPU support fetch, rendered per‑GPU info, and HTML‑escaped labels - by SimonF
@@ -316,6 +319,10 @@ if [[ "$SET_DRV_V" != "latest" &amp;&amp; "$SET_DRV_V" != "latest_prb" &amp;&amp
 fi
 }
 
+generate_cdi() {
+  nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml >/dev/null 2>&1
+}
+
 #Create settings file if not found
 if [ ! -f "&plugin;/settings.cfg" ]; then
   echo 'first_installation=true
@@ -371,8 +378,10 @@ if ! modinfo nvidia -0 >/dev/null 2>&amp;1 ; then
   echo "-----------------Installing Nvidia ${OS}Driver Package v$(echo $LAT_PACKAGE | cut -d '-' -f2)-------------------"
   install > /dev/null
   activate
+  generate_cdi
 else
   activate
+  generate_cdi
 fi
 
 #Enable update check
