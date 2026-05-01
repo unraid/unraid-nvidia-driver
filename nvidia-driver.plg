@@ -243,9 +243,9 @@ fi
 }
 
 get_version() {
-#If SET_DRV_V is set to anything that starts with 47, fall back to the legacy driver as latest driver
-if [[ "${SET_DRV_V}" = 47* ]]; then
-  LAT_PACKAGE="$(wget -qO- https://api.github.com/repos/unraid/unraid-nvidia-driver/releases/tags/${KERNEL_V} | jq -r '.assets[].name' | grep "${PACKAGE}" | grep -E -v '\.md5$' | grep "\-47" | sort -V | tail -1)"
+#If SET_DRV_V is set to anything that starts with 58, fall back to the legacy driver as latest driver
+if [[ "${SET_DRV_V}" = 58* ]]; then
+  LAT_PACKAGE="$(wget -qO- https://api.github.com/repos/unraid/unraid-nvidia-driver/releases/tags/${KERNEL_V} | jq -r '.assets[].name' | grep "${PACKAGE}" | grep -E -v '\.md5$' | grep "\-58" | sort -V | tail -1)"
   if [ -z "${LAT_PACKAGE}" ]; then
     LAT_PACKAGE="$(wget -qO- https://api.github.com/repos/unraid/unraid-nvidia-driver/releases/tags/${KERNEL_V} | jq -r '.assets[].name' | grep "${PACKAGE}" | grep -E -v '\.md5$' | sort -V | tail -1)"
   else
