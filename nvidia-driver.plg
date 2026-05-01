@@ -17,7 +17,7 @@
 <CHANGES>
 
 ###2026.05.01
-- Make sure to genereate CDI with nvidia-ctk on plugin installation/boot
+- Make sure to genereate CDI with nvidia-ctk on plugin installation boot
 
 ###2026.03.26
 - Per‑GPU detection with detailed compatibility rows, recommendations, and diagnostics - by SimonF
@@ -320,7 +320,7 @@ fi
 }
 
 generate_cdi() {
-  nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml >/dev/null 2>&1
+  nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml >/dev/null >&amp;1
 }
 
 #Create settings file if not found
