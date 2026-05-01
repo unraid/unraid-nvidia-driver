@@ -5,425 +5,418 @@ Icon="nvidia-driver.png"
 <?php
 require_once '/usr/local/emhttp/plugins/nvidia-driver/include/card-support.php';
 
-//Get selected driver version
-$selected_v = shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_selected_version");
-
-//Update driver versions and create file '/tmp/nvidia_driver'
+$selected_v = trim(shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_selected_version"));
 shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh update');
 
-//Get latest version metadata
-$version_data = nvidia_get_nvidia_versions();
-$latest_v = $version_data['latest_v'];
-$latest_prb_v = $version_data['latest_prb_v'];
-$latest_nfb_v = $version_data['latest_nfb_v'];
-$latest_nos_v = $version_data['latest_nos_v'];
+$latest_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_latest_version');
+$latest_prb_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_prb');
+$latest_nfb_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nfb');
+$latest_beta_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_beta');
+$latest_nos_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_nos');
 
-//Get driver license
-$module_license = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_license');
-
-//Get current installed driver version
-$installed_v = shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_installed_version');
-
-//Read driver versions from '/tmp/nvidia_driver'
-error_reporting(E_ALL);
-ini_set('display_errors',1);
-
-//Get value from update check
+$module_license = trim(shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_license'));
+$installed_v = trim(shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_installed_version'));
+$cuda_v = trim(shell_exec('/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh get_cuda_version'));
 $update_check = shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh update_check");
-
-$available_versions = $version_data['available_versions'];
-$candidate_versions = $version_data['candidate_versions'];
-$eachlines = $available_versions;
-
-foreach (array(470, 390, 340) as $legacy_major) {
-  $legacy_best = nvidia_best_version_for_branch($available_versions, $legacy_major);
-  if ($legacy_best !== null) {
-    $candidate_versions[] = $legacy_best;
-  }
-}
-
-$candidate_versions = array_values(array_unique($candidate_versions));
-$latest_v_norm = nvidia_extract_version(trim((string)$latest_v));
-$latest_prb_v_norm = nvidia_extract_version(trim((string)$latest_prb_v));
-$latest_nfb_v_norm = nvidia_extract_version(trim((string)$latest_nfb_v));
-$latest_nos_v_norm = nvidia_extract_version(trim((string)$latest_nos_v));
-
-//Get installed driver version
-$cur_drv_v = shell_exec("nvidia-smi | grep \"Driver Version\" | cut -d ' ' -f3");
-if (empty($cur_drv_v)) {
-  $cur_drv_v = shell_exec("nvidia-settings --help | grep -oP '(?<=version )[\d\.]+'");
-  if (empty($cur_drv_v)) {
-    $cur_drv_v = "ERROR: No driver found!";
-  }
-}
-
-//Get Unraid driver version
+$kernel_v = php_uname('r');
 $unraid_version = parse_ini_file('/etc/unraid-version');
+
+$gpu_support_json = shell_exec('php /usr/local/emhttp/plugins/nvidia-driver/include/gpu-support.php 2>/dev/null');
+$gpu_support = json_decode(trim($gpu_support_json), true);
+$gpu_rows = ($gpu_support && isset($gpu_support['ok']) && $gpu_support['ok']) ? $gpu_support['rows'] : array();
+
+$has_legacy_only = false;
+$has_open_only = false;
+foreach ($gpu_rows as $row) {
+  $support = $row['kernel_module_support'] ?? 'unknown';
+  if ($support === 'proprietary-only') $has_legacy_only = true;
+  if ($support === 'open-only') $has_open_only = true;
+}
+$is_conflict = $has_legacy_only && $has_open_only;
+$force_opensource = $has_open_only && !$has_legacy_only;
+$force_legacy = $has_legacy_only && !$has_open_only;
+
+$module_type_display = 'Unknown';
+if ($module_license === 'OPENSOURCE') $module_type_display = 'Open Source';
+elseif ($module_license === 'PROPRIETARY') $module_type_display = 'Legacy (Proprietary)';
+
+if (empty($installed_v)) {
+  $installed_v = trim(shell_exec("nvidia-smi 2>/dev/null | grep 'Driver Version' | grep -oE '[0-9]+\\.[0-9]+\\.?[0-9]*' | head -1"));
+}
+if (empty($installed_v)) $installed_v = 'Not installed';
+
+$eachlines = array();
+if (file_exists("/tmp/nvidia_driver")) {
+  $eachlines = file("/tmp/nvidia_driver", FILE_IGNORE_NEW_LINES);
+  if ($eachlines === false) $eachlines = array();
+}
+$nvos_versions = array();
+if (file_exists("/tmp/nvos_driver")) {
+  $nvos_lines = file("/tmp/nvos_driver", FILE_IGNORE_NEW_LINES);
+  if ($nvos_lines !== false) $nvos_versions = $nvos_lines;
+}
+
+$is_opensource_selected = ($force_opensource || $module_license === 'OPENSOURCE' || $selected_v === 'latest_nos');
 ?>
 
-<script>
-    //Don't execute commands again if page is refreshed
-    if ( window.history.replaceState ) {
-        window.history.replaceState( null, null, window.location.href );
-    }
-</script>
-
-<script>
-function changeVersion(form) {
-    var package = form.drv_version.value;
-    openBox("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh&arg1=update_version&arg2="+package,"Downloading Package",600,800,true);
-    return false;
-    }
-
-function escapeHtml(value) {
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-}
-
-var latestGpuSupportRows = [];
-var gpuSelectionFilterDisabled = false;
-
-function resetDriverOptionSupport() {
-    var options = document.querySelectorAll('input[name="drv_version"]');
-    options.forEach(function(option) {
-      option.disabled = false;
-      var parent = option.closest('p');
-      if (parent) {
-        parent.style.opacity = '1';
-        parent.style.display = '';
-      }
-    });
-}
-
-function updateGpuFilterButton() {
-    var button = document.getElementById('toggle-gpu-driver-filter');
-    var status = document.getElementById('gpu-driver-filter-status');
-    if (!button || !status) {
-      return;
-    }
-
-    if (gpuSelectionFilterDisabled) {
-      button.value = 'Enable GPU-Based Filtering';
-      status.textContent = 'GPU-based driver filtering is disabled.';
-    } else {
-      button.value = 'Disable GPU-Based Filtering';
-      status.textContent = 'GPU-based driver filtering is enabled.';
-    }
-}
-
-function toggleGpuDriverFilter() {
-    gpuSelectionFilterDisabled = !gpuSelectionFilterDisabled;
-
-    if (gpuSelectionFilterDisabled) {
-      resetDriverOptionSupport();
-    } else {
-      applyDriverOptionSupport(latestGpuSupportRows);
-    }
-
-    updateGpuFilterButton();
-}
-
-function renderGpuSupportRows(rows) {
-    var container = document.getElementById('gpu-support-content');
-    if (!container) {
-      return;
-    }
-
-    if (!Array.isArray(rows) || rows.length === 0) {
-      container.innerHTML = '<p><i>No GPU support data available (nvidia-smi query failed or returned no devices).</i></p>';
-      return;
-    }
-
-    var html = '';
-    rows.forEach(function(row) {
-      html += '<p>';
-      html += '<b>' + escapeHtml(row.gpu_index + ': ' + row.gpu_name) + '</b><br/>';
-      if (row.detection_source) {
-        html += 'Detected via: <code>' + escapeHtml(row.detection_source) + '</code><br/>';
-      }
-      if (row.chip_codename) {
-        html += 'Chip codename: <code>' + escapeHtml(row.chip_codename) + '</code><br/>';
-      }
-      if (row.architecture) {
-        html += 'Architecture: <code>' + escapeHtml(row.architecture) + '</code><br/>';
-      }
-      if (row.kernel_module_support) {
-        html += 'Kernel module support: <b>' + escapeHtml(row.kernel_module_support) + '</b><br/>';
-      }
-      html += 'Device ID input: <code>' + escapeHtml(row.gpu_input_device_id || '') + '</code><br/>';
-      html += 'Normalized ID: <code>' + escapeHtml(row.device_id || '') + '</code><br/>';
-
-      if (Array.isArray(row.valid_drivers) && row.valid_drivers.length > 0) {
-        html += 'Supported candidates: <b style="color:green">' + escapeHtml(row.valid_drivers.join(', ')) + '</b><br/>';
-        html += 'Recommended Driver: <b style="color:green">' + escapeHtml(row.recommended_driver || '') + '</b>';
-        if (row.recommendation_source) {
-          html += ' <i>(' + escapeHtml(row.recommendation_source) + ')</i>';
-        }
-      } else {
-        html += 'Supported candidates: <b style="color:tomato">none</b><br/>';
-        html += 'Reason: <i>' + escapeHtml(row.no_match_reason || 'unknown') + '</i>';
-      }
-
-      html += '</p>';
-    });
-
-    container.innerHTML = html;
-}
-
-function applyDriverOptionSupport(rows) {
-    latestGpuSupportRows = Array.isArray(rows) ? rows : [];
-
-    resetDriverOptionSupport();
-
-    if (gpuSelectionFilterDisabled) {
-      return;
-    }
-
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return;
-    }
-
-    var supportedAll = null;
-    rows.forEach(function(row) {
-      var fetchOkCount = Number((row && row.fetch_ok_count) || 0);
-      if (fetchOkCount === 0) {
-        return;
-      }
-
-      var list = Array.isArray(row.valid_drivers) ? row.valid_drivers : [];
-      var set = new Set(list);
-      if (supportedAll === null) {
-        supportedAll = set;
-      } else {
-        supportedAll = new Set(Array.from(supportedAll).filter(function(v) { return set.has(v); }));
-      }
-    });
-
-    // No resolved support data: keep current option state.
-    if (supportedAll === null) {
-      return;
-    }
-
-    var incompatibleAll = (supportedAll.size === 0);
-    var hasOpenOnly = rows.some(function(row) {
-      return String((row && row.kernel_module_support) || '').toLowerCase() === 'open-only';
-    });
-    var options = document.querySelectorAll('input[name="drv_version"]');
-    options.forEach(function(option) {
-      var mappedVersion = option.getAttribute('data-driver-version');
-      if (!mappedVersion) {
-        return;
-      }
-
-      var isSupported = incompatibleAll ? false : supportedAll.has(mappedVersion);
-      if (hasOpenOnly && option.value !== 'latest_nos') {
-        isSupported = false;
-      }
-      option.disabled = !isSupported;
-      var parent = option.closest('p');
-      if (parent) {
-        parent.style.opacity = isSupported ? '1' : '0.5';
-      }
-    });
-
-    var openOption = document.querySelector('input[name="drv_version"][value="latest_nos"]');
-    if (openOption) {
-      var openParent = openOption.closest('p');
-      var proprietaryOnlyAll = rows.every(function(row) {
-        return String((row && row.kernel_module_support) || '').toLowerCase() === 'proprietary-only';
-      });
-      var hasUnknown = rows.some(function(row) {
-        return String((row && row.kernel_module_support) || '').toLowerCase() === 'unknown';
-      });
-      var hideOpen = proprietaryOnlyAll || hasUnknown;
-
-      if (openParent) {
-        openParent.style.display = hideOpen ? 'none' : '';
-      }
-
-      if (hideOpen) {
-        openOption.disabled = true;
-      }
-    }
-
-    var selected = document.querySelector('input[name="drv_version"]:checked');
-    if (selected && selected.disabled) {
-      var firstEnabled = document.querySelector('input[name="drv_version"]:not(:disabled)');
-      if (firstEnabled) {
-        firstEnabled.checked = true;
-      }
-    }
-}
-
-function loadGpuSupport() {
-    var container = document.getElementById('gpu-support-content');
-    if (!container) {
-      return;
-    }
-
-    var url = '/plugins/nvidia-driver/include/gpu-support.php?_=' + Date.now();
-
-    fetch(url, { cache: 'no-store' })
-      .then(function(response) {
-        if (!response.ok) {
-          throw new Error('HTTP ' + response.status);
-        }
-        return response.json();
-      })
-      .then(function(data) {
-        var rows = (data && data.rows) ? data.rows : [];
-        renderGpuSupportRows(rows);
-        applyDriverOptionSupport(rows);
-      })
-      .catch(function(err) {
-        container.innerHTML = '<p><b style="color:tomato">Failed to load GPU support data.</b><br/><i>' + escapeHtml(err.message || 'Unknown error') + '</i></p>';
-      });
-}
-
-document.addEventListener('DOMContentLoaded', loadGpuSupport);
-document.addEventListener('DOMContentLoaded', updateGpuFilterButton);
-</script>
-
 <style>
-table tbody td {
-    line-height:normal
+.nv-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  max-width: 1400px;
+}
+.nv-span {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1000px) {
+  .nv-layout { grid-template-columns: 1fr; }
+}
+
+.nv-card {
+  background: var(--table-background-color, #fff);
+  border: 1px solid var(--table-border-color, var(--border-color, #ddd));
+  border-radius: 4px;
+  padding: 16px 20px;
+}
+.nv-card h2 {
+  font-size: 1.1rem;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--table-border-color, var(--border-color, #eee));
+  color: var(--text-color, #333);
+}
+
+.nv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 20px;
+}
+.nv-grid-full { grid-column: 1 / -1; }
+.nv-label {
+  font-size: 0.85em;
+  color: var(--alt-text-color, #777);
+  margin-bottom: 1px;
+}
+.nv-val {
+  font-weight: 600;
+  color: var(--text-color, #333);
+}
+
+.nv-form-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+.nv-form-row label {
+  min-width: 140px;
+  font-weight: 600;
+  color: var(--text-color, #333);
+}
+
+.nv-warn {
+  background: var(--table-background-color, #fff3cd);
+  border: 1px solid var(--border-color, #ffc107);
+  border-left: 4px solid #ffc107;
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin: 10px 0;
+  color: var(--text-color, #856404);
+}
+
+.nv-muted {
+  font-size: 0.9em;
+  color: var(--alt-text-color, #777);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+details.nv-branch summary {
+  cursor: pointer;
+  color: var(--alt-text-color, #888);
+  font-size: 0.9em;
+  margin-top: 12px;
+}
+details.nv-branch summary:hover { color: var(--text-color, #ccc); }
+details.nv-branch dl {
+  margin: 8px 0 0 0;
+  padding: 12px;
+  background: var(--mild-background-color, #f5f5f5);
+  border-radius: 4px;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+details.nv-branch dt {
+  font-weight: bold;
+  color: var(--text-color, #333);
+  margin-top: 6px;
+}
+details.nv-branch dt:first-child { margin-top: 0; }
+details.nv-branch dd {
+  margin: 2px 0 6px 0;
+  color: var(--alt-text-color, #999);
+}
+
+.nv-links a {
+  margin-right: 16px;
+  color: var(--link-text-color, var(--text-color, #1565c0));
+}
+
+.nv-gpu-details { margin: 4px 0; }
+.nv-gpu-details summary { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 4px 0; list-style: none; }
+.nv-gpu-details summary::-webkit-details-marker { display: none; }
+.nv-gpu-chevron { font-size: 0.8em; transition: transform 0.2s; color: var(--alt-text-color, #888); }
+.nv-gpu-details[open] .nv-gpu-chevron { transform: rotate(90deg); }
+.nv-gpu-details[open] summary { margin-bottom: 8px; }
+.nv-gpu-info {
+  padding: 10px 14px;
+  background: var(--mild-background-color, #f5f5f5);
+  border-radius: 4px;
+  font-size: 0.9em;
+  line-height: 1.8;
+  color: var(--text-color, #333);
+}
+.nv-gpu-tag {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+.nv-tag-open-only { background: var(--mild-background-color, #e8f5e9); color: var(--text-color, #2e7d32); }
+.nv-tag-both { background: var(--mild-background-color, #e3f2fd); color: var(--text-color, #1565c0); }
+.nv-tag-proprietary-only { background: var(--mild-background-color, #fff3e0); color: var(--text-color, #e65100); }
+.nv-tag-unknown { background: var(--mild-background-color, #f5f5f5); color: var(--alt-text-color, #757575); }
+
+.nv-error {
+  background: var(--table-background-color, #ffebee);
+  border: 1px solid var(--border-color, #ef5350);
+  border-left: 4px solid #d32f2f;
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin: 10px 0;
+  color: var(--text-color, #b71c1c);
 }
 </style>
 
-<h1 style="text-align: center;"><a href="https://forums.unraid.net/topic/98978-plugin-nvidia-driver/" target="_blank" rel="noopener"><span style="color: green;">Nvidia Driver Package</span></a></h1>
-<br/>
+<script>
+if (window.history.replaceState) {
+  window.history.replaceState(null, null, window.location.href);
+}
 
-<div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start;">
+function changeVersion(form) {
+  var pkg = form.drv_version.value;
+  openBox("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh&arg1=update_version&arg2=" + pkg, "Downloading Package", 600, 800, true);
+}
 
-<div style="width: 47%; min-width: 700px; max-width: 1260px; flex-wrap: wrap; margin: 10px;">
-<p><b><font size="+1">Nvidia Info:</font></b></p>
-            <p>Nvidia Driver Version: 
-            <b style="color:green"><?php echo htmlspecialchars((string)$cur_drv_v, ENT_QUOTES, 'UTF-8'); ?></b></p>
-        <? if (isset($module_license ) === true && trim($module_license ) === 'OPENSOURCE'): ?>
-            <p>Open Source Kernel Module: 
-            <b style="color:blue">Yes</b></p>
-        <? elseif (isset($module_license ) === true && trim($module_license ) === 'PROPRIETARY'): ?>
-            <p>Open Source Kernel Module: 
-            <b style="color:green">No</b></p>
-        <? endif; ?>
-          <?php
-          $gpu_info = shell_exec("nvidia-smi --query-gpu=index,name,gpu_bus_id,uuid --format=csv,noheader | tr \",\" \"\n\" | sed 's/^[ \t]*//' | sed -e s/00000000://g | sed '0~4G' | sed 's/^[0-9]$/&:/'");
-          ?>
-            <p>Installed GPU(s):<br/>
-          <b style="color:green"><?php echo nl2br(htmlspecialchars((string)$gpu_info, ENT_QUOTES, 'UTF-8')); ?></b></p><br/>
-            <p><b><font size="+1">GPU Driver Support:</font></b></p>
-            <div id="gpu-support-content">
-              <p><i>Loading supported drivers...</i></p>
-            </div>
-            <p>
-              <input type="button" id="toggle-gpu-driver-filter" value="Disable GPU-Based Filtering" onclick="toggleGpuDriverFilter()">
-              <span id="gpu-driver-filter-status">GPU-based driver filtering is enabled.</span>
-            </p>
-            <br/>
-        </tr>
-    </table>
-    <? if (isset($selected_v ) === true && trim($selected_v ) === 'latest' || trim($selected_v ) === 'latest_prb' || trim($selected_v ) === 'latest_nfb'): ?>
-		<tr><td>
-		<b><font size="+1">Driver Update Notification</font></b>
-		</td></tr>
-		<tr><td>
-		<form id="s" method="post" >
-		<select name="updata_check_selected" required>
-                    <option <?php echo ( $update_check == "true") ? 'selected="selected"' : '' ?> value="true"> Enabled</option>
-                    <option <?php echo ( $update_check == "false") ? 'selected="selected"' : '' ?> value="false"> Disabled</option>
-                </select>
-                <input type="submit" name="changeUPDcheck" value="Change">
-                </form>
-                </td>
-                <tr><td><p>The Driver Update Notification, checks once a day (between 8 am and 10 am) whether a new version of the selected branch is available and, if necessary, downloads the new driver and sends a notification.</p>
-			<p><b>The server needs to be restarted in order to install the new driver.</b></p><br/>
-		</tr></td>
-	  </table>
-    <? endif; ?>
-</div>
+function filterVersions() {
+  var mt = document.getElementById('module_type').value;
+  var sel = document.getElementById('drv_version');
+  var allowed = mt === 'opensource' ? ['latest_nos'] : ['latest','latest_prb','latest_nfb','latest_beta'];
 
-<div style="width: 47%; min-width: 700px; max-width: 1260px; margin: 10px;">
-<p><b><font size="+1">Select preferred driver version:</font></b></p>
-<br/>
-    <table>
-            <form id="s" method="post" >
-              <tr>
-                <td><b>Latest Versions:</b></td>
-                <td>
-                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_v_norm); ?>" value="latest" <?php echo ( $selected_v == "latest") ? 'checked="checked"' : ''; ?>/><font><b>latest</font>:</b> <?php echo htmlspecialchars("v" . $latest_v, ENT_QUOTES, 'UTF-8'); ?> </p>
-                    <? if (isset($latest_prb_v ) === true && trim($latest_prb_v ) !== ''): ?>
-                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_prb_v_norm); ?>" value="latest_prb" <?php echo ( $selected_v == "latest_prb") ? 'checked="checked"' : ''; ?>/><b><font color = "green"><b>Production Branch</font>:</b>  <?php echo htmlspecialchars("v" . $latest_prb_v, ENT_QUOTES, 'UTF-8'); ?> </p>
-                    <? else: ?>
-                    <p><b><font color = "green">Production Branch</font>:</b> <i>Not found for this Unraid version!</i></p>
-                    <? endif; ?>
-                    <? if (isset($latest_nfb_v ) === true && trim($latest_nfb_v ) !== ''): ?>
-                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_nfb_v_norm); ?>" value="latest_nfb" <?php echo ( $selected_v == "latest_nfb") ? 'checked="checked"' : ''; ?>/><b><font color = "tomato"><b>New Feature Branch</font>:</b> <?php echo htmlspecialchars("v" . $latest_nfb_v, ENT_QUOTES, 'UTF-8'); ?></p>
-                    <? else: ?>
-                    <p><b><font color = "tomato">New Feature Branch</font>:</b> <i>Not found for this Unraid version!</i></p>
-                    <? endif; ?>
-                    <? if (isset($latest_nos_v ) === true && trim($latest_nos_v ) !== ''): ?>
-                    <p><input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)$latest_nos_v_norm); ?>" value="latest_nos" <?php echo ( $selected_v == "latest_nos") ? 'checked="checked"' : ''; ?>/><b><font color = "blue"><b>Open Source Driver</font>:</b> <?php echo htmlspecialchars("v" . $latest_nos_v, ENT_QUOTES, 'UTF-8'); ?><? echo (version_compare($unraid_version['version'], '7.0.0-rc.1.1', '<')) ? '<em><b> - Please see readme below!</b></em>' : ''; ?></p>
-                    <? else: ?>
-                    <p><b><font color = "blue">Open Source Driver</font>:</b> <i>Not found for this Unraid version!</i></p>
-                    <? endif; ?>
-                </td>
-              </tr>
-              <tr>
-                <td><b>Available Versions:</b></td><td>
-                    <?php
-                    krsort($eachlines);
-                    foreach($eachlines as $lines){
-                    $arr = explode(" ", $lines);
-                    $lines2 = implode(" ", $arr);
-					          ?>
-                    <p>
-            <input type="radio" name="drv_version" data-driver-version="<?php echo htmlspecialchars((string)nvidia_extract_version($lines2)); ?>" value="<?php echo htmlspecialchars((string)$lines2);?>" <?php echo ( $selected_v == $lines2) ? 'checked="checked"' : '' ?>/> 
-            <?php echo htmlspecialchars("v" . $lines2, ENT_QUOTES, 'UTF-8');?>
-					          </p>
-                    <?php
-					          }
-                    ?>
-                </td>
-              <tr>
-                <td>
-                </td>
-                <td>
-                    <input type="button" value="Update & Download" onclick="changeVersion(this.form)">
-                </td>
-            </tr>
-            </form>
-            </table>
-	<table>
-		<p style="text-align: left; font-weight: bold;">ATTENTION: If you set the version to 'latest', 'Production Branch' or 'New Feature Branch' you either have to enable the Driver Update Notification (this will download the driver automatically) or if you disabled the Driver Update Notification you manually have to click the button "Update & Download" to download a newer driver.<br>Please keep in mind, to install a newer driver you have to reboot your server.</p>
-		<br>
-		<p><b><font size+1> Latest versions:</font></b></p>
-		<ul>
-		  <p>
-		  <li><b>latest</b> - will always download the latest driver version available regardless of the branch</li><br>
-		  <li><b>Production Branch</b>  - This is the long lifecycle (i.e., multiple releases in a branch over a single year period) driver branch providing ISV Certification, optimal stability and performance, and regular security updates for NVIDIA RTX/Quadro professional customers. This driver was previously named, Optimal Driver for Enterprise (ODE), and is most commonly deployed in production systems at enterprises.</li><br>
-		  <li><b>New Feature Branch</b>  - This is a short lived branch driver (i.e., 1-2 releases per branch only) where new NVIDIA RTX/Quadro features are introduced and made available between Production Branch releases. New Feature Branch drivers, previously named, Quadro New Feature (QNF), typically provide support for new operating systems, third party hardware, and game engines.</li><br>
-		  <li><b>Open Source Driver</b>  - This package includes the Open Source Kernel modules and the libraries/execuatables from the proprietary Nvidia driver package.
-		  <br><b>Supported GPUs:</b> This driver package only supports Turing based cards and newer!
-		  <?php
-            if(version_compare($unraid_version['version'], '7.0.0-rc.1.1', '<')) {
-              echo '<br><b><font color = "red">ATTENTION:</font></b> If you want to use the Open Source driver with GeForce and/or Workstation cards you have to create the file "<code>/boot/config/modprobe.d/nvidia.conf</code>" on your USB boot device with the contents, before you reboot your server:<br><code>options nvidia NVreg_OpenRmEnableUnsupportedGpus=1</code><br><p><em>For more information see <a href="https://us.download.nvidia.com/XFree86/Linux-x86_64/515.76/README/kernel_open.html">here</a>.</em></p>';
+  sel.querySelectorAll('option').forEach(function(o) {
+    var og = o.closest('optgroup');
+    if (!og) return;
+    if (og.getAttribute('data-group') === 'branch') {
+      o.style.display = allowed.indexOf(o.value) !== -1 ? '' : 'none';
+    } else if (og.getAttribute('data-group') === 'pin') {
+      o.style.display = o.getAttribute('data-type') === mt ? '' : 'none';
+    }
+  });
+  sel.querySelectorAll('optgroup').forEach(function(og) {
+    var vis = false;
+    og.querySelectorAll('option').forEach(function(o) { if (o.style.display !== 'none') vis = true; });
+    og.style.display = vis ? '' : 'none';
+  });
+  var cur = sel.options[sel.selectedIndex];
+  if (cur && cur.style.display === 'none') {
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].style.display !== 'none') { sel.selectedIndex = i; break; }
+    }
+  }
+
+  updateAutoUpdate();
+}
+
+function toggleManualOverride() {
+  var cb = document.getElementById('manual_override');
+  var mt = document.getElementById('module_type');
+  mt.disabled = !cb.checked;
+  if (!cb.checked) filterVersions();
+}
+
+function updateAutoUpdate() {
+  var v = document.getElementById('drv_version').value;
+  var ok = ['latest','latest_prb','latest_nfb','latest_beta','latest_nos'].indexOf(v) !== -1;
+  var s = document.querySelector('[name="updata_check_selected"]');
+  var b = document.getElementById('auto-update-btn');
+  var n = document.getElementById('auto-update-note');
+  if (s) { s.disabled = !ok; if (b) b.disabled = !ok; }
+  if (n) n.style.display = ok ? 'none' : '';
+}
+
+$(function() { filterVersions(); });
+</script>
+
+<div class="nv-layout">
+
+  <!-- System Info -->
+  <div class="nv-card nv-span">
+    <h2>System Information</h2>
+    <div class="nv-grid">
+      <div><div class="nv-label">Driver Version</div><div class="nv-val"><?php echo htmlspecialchars($installed_v); ?></div></div>
+      <div><div class="nv-label">Kernel Module</div><div class="nv-val"><?php echo htmlspecialchars($module_type_display); ?></div></div>
+      <?php if (!empty($cuda_v)): ?>
+      <div><div class="nv-label">CUDA Version</div><div class="nv-val"><?php echo htmlspecialchars($cuda_v); ?></div></div>
+      <?php endif; ?>
+      <div><div class="nv-label">Kernel</div><div class="nv-val"><?php echo htmlspecialchars($kernel_v); ?></div></div>
+      <?php if (!empty($gpu_rows)): ?>
+      <div class="nv-grid-full"><div class="nv-label">Installed GPU(s)</div>
+        <?php foreach ($gpu_rows as $gpu):
+          $support = $gpu['kernel_module_support'] ?? 'unknown';
+          $tag_class = 'nv-tag-' . str_replace(' ', '-', $support);
+          $tag_text = $support === 'open-only' ? 'Open Source only' :
+                     ($support === 'proprietary-only' ? 'Legacy (Proprietary only)' :
+                     ($support === 'both' ? 'Open Source / Legacy' : 'Unknown'));
+        ?>
+        <details class="nv-gpu-details">
+          <summary>
+            <i class="fa fa-chevron-right nv-gpu-chevron"></i>
+            <span class="nv-val"><?php echo htmlspecialchars($gpu['gpu_name'] ?? 'Unknown GPU'); ?></span>
+            <span class="nv-gpu-tag <?php echo $tag_class; ?>"><?php echo $tag_text; ?></span>
+          </summary>
+          <div class="nv-gpu-info">
+            <div>Detected via: <?php echo htmlspecialchars($gpu['detection_source'] ?? 'unknown'); ?></div>
+            <?php if (!empty($gpu['chip_codename'])): ?>
+            <div>Chip codename: <?php echo htmlspecialchars($gpu['chip_codename']); ?></div>
+            <?php endif; ?>
+            <?php if (!empty($gpu['architecture'])): ?>
+            <div>Architecture: <?php echo htmlspecialchars($gpu['architecture']); ?></div>
+            <?php endif; ?>
+            <div>Kernel module support: <b><?php echo htmlspecialchars($support); ?></b></div>
+            <?php if (!empty($gpu['gpu_input_device_id'])): ?>
+            <div>Device ID input: <?php echo htmlspecialchars($gpu['gpu_input_device_id']); ?></div>
+            <?php endif; ?>
+            <?php if (!empty($gpu['device_id'])): ?>
+            <div>Normalized ID: <?php echo htmlspecialchars($gpu['device_id']); ?></div>
+            <?php endif; ?>
+            <?php if (!empty($gpu['valid_drivers'])): ?>
+            <div>Supported candidates: <b><?php echo htmlspecialchars(implode(', ', $gpu['valid_drivers'])); ?></b></div>
+            <?php endif; ?>
+            <?php if (!empty($gpu['recommended_driver'])): ?>
+            <div>Recommended Driver: <b><?php echo htmlspecialchars($gpu['recommended_driver']); ?></b> (<?php echo htmlspecialchars($gpu['recommendation_source'] ?? ''); ?>)</div>
+            <?php endif; ?>
+          </div>
+        </details>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
+    </div>
+    <?php if ($is_conflict): ?>
+    <div class="nv-error"><b>Incompatible GPU combination:</b> Your system has GPUs that require different kernel module types. One GPU requires proprietary modules while another requires open-source modules. Both cannot run simultaneously with the same driver module type.</div>
+    <?php elseif ($force_opensource): ?>
+    <div class="nv-warn"><b>Open Source kernel modules required:</b> Your GPU architecture only supports open-source kernel modules.</div>
+    <?php endif; ?>
+  </div>
+
+  <!-- Driver Selection -->
+  <div class="nv-card">
+    <h2>Driver Selection</h2>
+    <form name="nvidia_driver_settings" method="POST">
+      <?php $gpu_forced = $force_opensource || $force_legacy || $is_conflict; ?>
+      <div class="nv-form-row">
+        <label for="module_type">Module Type</label>
+        <select id="module_type" onchange="filterVersions()" <?php echo $gpu_forced ? 'disabled' : ''; ?>>
+          <?php echo mk_option($is_opensource_selected ? 'opensource' : 'proprietary', 'opensource', 'Open Source'); ?>
+          <?php echo mk_option($is_opensource_selected ? 'opensource' : 'proprietary', 'proprietary', 'Legacy (Proprietary)'); ?>
+        </select>
+      </div>
+      <?php if ($gpu_forced): ?>
+      <div class="nv-form-row">
+        <label></label>
+        <label style="min-width:auto"><input type="checkbox" id="manual_override" onchange="toggleManualOverride()"> Manual selection</label>
+      </div>
+      <?php endif; ?>
+      <div class="nv-form-row">
+        <label for="drv_version">Version</label>
+        <select name="drv_version" id="drv_version" onchange="updateAutoUpdate()">
+          <optgroup label="Follow Branch (auto-update)" data-group="branch">
+            <?php echo mk_option($selected_v, 'latest', 'Latest — v'.$latest_v); ?>
+            <?php if (!empty(trim($latest_prb_v))) echo mk_option($selected_v, 'latest_prb', 'Production — v'.$latest_prb_v); ?>
+            <?php if (!empty(trim($latest_nfb_v))) echo mk_option($selected_v, 'latest_nfb', 'New Feature — v'.$latest_nfb_v); ?>
+            <?php if (!empty(trim($latest_beta_v))) echo mk_option($selected_v, 'latest_beta', 'Beta — v'.$latest_beta_v); ?>
+            <?php if (!empty(trim($latest_nos_v))) echo mk_option($selected_v, 'latest_nos', 'Open Source — v'.$latest_nos_v); ?>
+          </optgroup>
+          <optgroup label="Pin Specific Version (kernel <?php echo $kernel_v; ?>)" data-group="pin">
+            <?php
+            $sorted = $eachlines; rsort($sorted, SORT_NATURAL);
+            foreach ($sorted as $line) {
+              $ver = trim($line);
+              if (!empty($ver)) echo mk_option($selected_v, $ver, 'v'.$ver, 'data-type="proprietary"');
             }
-		  ?>
-		  </li></p></ul>
-		  <br/>
-	</table>
-</div>
+            if (!empty($nvos_versions)) {
+              $nvos_sorted = $nvos_versions; rsort($nvos_sorted, SORT_NATURAL);
+              foreach ($nvos_sorted as $nv) {
+                $ver = trim($nv);
+                if (!empty($ver)) echo mk_option($selected_v, $ver, 'v'.$ver, 'data-type="opensource"');
+              }
+            }
+            ?>
+          </optgroup>
+        </select>
+      </div>
+      <div class="nv-form-row">
+        <label></label>
+        <input type="button" value="Update &amp; Download" onclick="changeVersion(this.form)">
+      </div>
+    </form>
+    <details class="nv-branch">
+      <summary><i class="fa fa-info-circle"></i> Branch descriptions</summary>
+      <dl>
+        <dt>Latest</dt><dd>Always downloads the latest driver version regardless of branch.</dd>
+        <dt>Production</dt><dd>Long lifecycle, ISV certified, optimal stability. Recommended for production.</dd>
+        <dt>New Feature</dt><dd>Short lived branch (1-2 releases) with new features between Production releases.</dd>
+        <dt>Beta</dt><dd>Cutting-edge features. May contain issues. Not for production use.</dd>
+        <dt>Open Source</dt><dd>Open Source kernel modules (MIT/GPL) + proprietary libraries. Turing and newer only. <b>Required for Blackwell GPUs.</b>
+        <?php if (isset($unraid_version['version']) && version_compare($unraid_version['version'], '7.0.0-rc.1.1', '<')): ?>
+        <br>For GeForce/Workstation: create <code>/boot/config/modprobe.d/nvidia.conf</code> with <code>options nvidia NVreg_OpenRmEnableUnsupportedGpus=1</code>
+        <?php endif; ?>
+        </dd>
+      </dl>
+    </details>
+  </div>
+
+  <!-- Auto-Update -->
+  <div class="nv-card">
+    <h2>Auto-Update Notification</h2>
+    <form method="POST">
+      <div class="nv-form-row">
+        <label for="updata_check_selected">Check for updates</label>
+        <select id="updata_check_selected" name="updata_check_selected">
+          <?php echo mk_option($update_check, 'true', 'Enabled'); ?>
+          <?php echo mk_option($update_check, 'false', 'Disabled'); ?>
+        </select>
+        <input type="submit" name="changeUPDcheck" value="Apply" id="auto-update-btn">
+      </div>
+    </form>
+    <div id="auto-update-note" class="nv-warn" style="display:none">Auto-update is only available when following a branch.</div>
+    <p class="nv-muted">Checks once daily (8-10am) for new versions on the selected branch. Downloads automatically and sends a notification. <b>Reboot required to install.</b></p>
+  </div>
+
+  <!-- Links -->
+  <div class="nv-card nv-span nv-links">
+    <span>
+      <a href="https://forums.unraid.net/topic/98978-plugin-nvidia-driver/" target="_blank" rel="noopener noreferrer"><i class="fa fa-comments-o"></i> Unraid Forum</a>
+      <a href="https://github.com/unraid/unraid-nvidia-driver" target="_blank" rel="noopener noreferrer"><i class="fa fa-github"></i> GitHub</a>
+      <a href="https://www.nvidia.com/en-us/drivers/unix/" target="_blank" rel="noopener noreferrer"><i class="fa fa-external-link"></i> Nvidia Driver Archive</a>
+    </span>
+  </div>
 
 </div>
 
 <?php
-if(isset($_POST['changeUPDcheck'])) {
-$updata_check_selected = $_POST["updata_check_selected"];
-shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh change_update_check ".escapeshellarg($updata_check_selected)."");
-echo '<script>parent.window.location.reload();</script>';
+if (isset($_POST['changeUPDcheck'])) {
+  shell_exec("/usr/local/emhttp/plugins/nvidia-driver/include/exec.sh change_update_check " . escapeshellarg($_POST["updata_check_selected"]));
+  echo '<script>parent.window.location.reload();</script>';
 }
 ?>

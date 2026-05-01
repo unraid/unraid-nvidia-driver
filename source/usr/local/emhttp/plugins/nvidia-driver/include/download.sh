@@ -235,9 +235,22 @@ fi
 #Begin Check
 check
 
-#Check for old packages that are not suitable for this Kernel and not suitable for the current Nvidia driver version
-rm -rf $(ls -d /boot/config/plugins/nvidia-driver/packages/* 2>/dev/null | grep -v "${KERNEL_V%%-*}")
-rm -f $(ls /boot/config/plugins/nvidia-driver/packages/${KERNEL_V%%-*}/* 2>/dev/null | grep -v "$LAT_PACKAGE")
+# SEC: Safe cleanup of old kernel directories.
+# Original used unquoted command substitution with rm -rf, which could
+# delete everything if variables were empty (grep -v "" matches all lines).
+# Using a loop with explicit checks prevents accidental mass deletion.
+while IFS= read -r dir; do
+  [[ "$(basename "$dir")" != "${KERNEL_V%%-*}" ]] && rm -rf "$dir"
+done < <(find /boot/config/plugins/nvidia-driver/packages -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+
+# SEC: Only clean up old packages if we know the current package name.
+# Without this guard, an empty $LAT_PACKAGE would cause grep -v "" to
+# match nothing, and all files would be deleted from the packages dir.
+if [ -n "$LAT_PACKAGE" ]; then
+  while IFS= read -r file; do
+    [[ "$(basename "$file")" != "$LAT_PACKAGE" && "$(basename "$file")" != "${LAT_PACKAGE}.md5" ]] && rm -f "$file"
+  done < <(find "/boot/config/plugins/nvidia-driver/packages/${KERNEL_V%%-*}" -mindepth 1 -maxdepth 1 -type f 2>/dev/null)
+fi
 
 #Display message to reboot server both in Plugin and WebUI
 echo
