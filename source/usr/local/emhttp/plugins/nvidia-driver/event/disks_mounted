@@ -1,0 +1,18 @@
+#!/bin/bash
+# Fires after the array is up (cache disk mounted, /var/lib/docker available)
+# and before rc.docker starts the daemon. Stages the EGL/GLVND vendor JSONs
+# the driver package doesn't install on the host so nvidia-ctk's graphics
+# discoverer includes them in the CDI spec, regenerates the spec, and appends
+# GBM_BACKENDS_PATH for Debian-multiarch containers.
+EGL_SRC=/var/lib/docker/volumes/nvidia-driver-vol/_data/share
+if [ -d "$EGL_SRC" ]; then
+  for f in "$EGL_SRC"/glvnd/egl_vendor.d/*nvidia*.json "$EGL_SRC"/egl/egl_external_platform.d/*nvidia*.json; do
+    [ -f "$f" ] || continue
+    dst="/usr/share${f#$EGL_SRC}"
+    [ -f "$dst" ] || install -D -m 0644 "$f" "$dst"
+  done
+fi
+nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml >/dev/null 2>&1
+if [ -f /etc/cdi/nvidia.yaml ] && ! grep -q GBM_BACKENDS_PATH /etc/cdi/nvidia.yaml; then
+  sed -i '/^    env:$/a\        - GBM_BACKENDS_PATH=/usr/lib64/gbm:/usr/lib/x86_64-linux-gnu/gbm:/usr/lib/aarch64-linux-gnu/gbm' /etc/cdi/nvidia.yaml
+fi

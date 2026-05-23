@@ -105,6 +105,12 @@ $TARGET_V"
   cp /usr/bin/nvidia-modprobe /NVIDIA/usr/bin/
   cp -R /etc/OpenCL /NVIDIA/etc/
   cp -R /etc/vulkan /NVIDIA/etc/
+  # The NVIDIA installer writes the EGL/GLVND vendor JSONs to system paths that
+  # ignore --x-prefix; capture them so containers using --gpus all can find
+  # libEGL_nvidia.so.0 and the GBM/Wayland external platforms.
+  mkdir -p /NVIDIA/usr/share/glvnd/egl_vendor.d /NVIDIA/usr/share/egl/egl_external_platform.d
+  cp /usr/share/glvnd/egl_vendor.d/*nvidia*.json /NVIDIA/usr/share/glvnd/egl_vendor.d/ 2>/dev/null || true
+  cp /usr/share/egl/egl_external_platform.d/*nvidia*.json /NVIDIA/usr/share/egl/egl_external_platform.d/ 2>/dev/null || true
 
 
   cd ${DATA_DIR}

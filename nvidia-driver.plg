@@ -323,7 +323,12 @@ fi
 }
 
 generate_cdi() {
-  nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml >/dev/null 2>&amp;1
+  # CDI generation is handled by the disks_mounted event hook so it runs after
+  # /var/lib/docker is mounted (the EGL/GLVND vendor JSONs the .txz doesn't
+  # ship on the host get staged from the libnvidia-container volume there).
+  # Trigger it now for the manual plugin install/upgrade case; on boot Unraid
+  # fires the event itself once the array comes up.
+  [ -x &emhttp;/event/disks_mounted ] &amp;&amp; &emhttp;/event/disks_mounted
 }
 
 #Create settings file if not found
