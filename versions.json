@@ -1,8 +1,8 @@
 {
   "branches": {
     "production": {
-      "current": "595.71.05",
-      "last_prb": "595.58.03"
+      "current": "595.80",
+      "last_prb": "595.71.05"
     },
     "newfeature": {
       "current": "610.43.02",
