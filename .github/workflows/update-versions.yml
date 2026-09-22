@@ -32,7 +32,7 @@ jobs:
         CUR_LIBNVIDIA="$(jq -r '.runtimes.libnvidia.current' versions.json)"
 
         # Get driver versions
-        RAW_DATA="$(wget -qO- https://www.nvidia.com/en-us/drivers/unix/ | tidy -quiet -wrap 4096 2>/dev/null | grep -A8 "Linux x86_64/AMD64/EM64T")"
+        #RAW_DATA="$(wget -qO- https://www.nvidia.com/en-us/drivers/unix/ | tidy -quiet -wrap 4096 2>/dev/null | grep -A8 "Linux x86_64/AMD64/EM64T")"
         PRB="$(echo "${RAW_DATA}" | grep -i "Latest Production Branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
         NFB="$(echo "${RAW_DATA}" | grep -i "Latest New Feature Branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
         BETA="$(echo "${RAW_DATA}" | grep -i "Latest Beta" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b')"
