@@ -22,39 +22,88 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install dependencies
-        run: sudo apt-get -y install jq tidy wget
-
       - name: Detect NVIDIA driver versions
         id: nvidia
+        env:
+          # Driver lookup API used by https://www.nvidia.com/en-us/drivers/unix/
+          NV_API: https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&osID=12&languageCode=1033&isWHQL=0&dltype=-1&dch=0&upCRD=null&ctk=null&numberOfResults=10
+          NV_FORUM: https://forums.developer.nvidia.com/raw/28500
+          LEGACY_BRANCH: '580'
         run: |
-          RAW_DATA="$(wget -qO- https://www.nvidia.com/en-us/drivers/unix/ | tidy -quiet -wrap 4096 2>/dev/null | grep -A8 "Linux x86_64/AMD64/EM64T")"
-          PRB="$(echo "${RAW_DATA}" | grep -i "Latest Production Branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' | head -n1)"
-          NFB="$(echo "${RAW_DATA}" | grep -i "Latest New Feature Branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' | head -n1)"
-          BETA="$(echo "${RAW_DATA}" | grep -i "Latest Beta" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' | head -n1)"
-          LEGACY="$(echo "${RAW_DATA}" | grep -i "Latest Legacy" | grep "(4" | head -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' | head -n1)"
+          VER_RE='^[0-9]+\.[0-9]+(\.[0-9]+)?$'
+          KEYS=(prb nfb beta legacy)
 
-          # Fallback to NVIDIA developer forum if the primary fetch failed or
-          # any branch (incl. beta/legacy) is missing, so partial parses don't
-          # silently leave a track stale.
-          if [ -z "${RAW_DATA}" ] || [ -z "${PRB}" ] || [ -z "${NFB}" ] || [ -z "${BETA}" ] || [ -z "${LEGACY}" ]; then
-            RAW_DATA="$(wget -qO- https://forums.developer.nvidia.com/t/current-graphics-driver-releases/28500 | tidy -quiet -wrap 4096 2>/dev/null || true)"
-            PRB="$(echo "${RAW_DATA}" | grep -i "^Current production branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' | head -n1)"
-            NFB="$(echo "${RAW_DATA}" | grep -i "^Current new feature branch" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' | head -n1)"
-            BETA="$(echo "${RAW_DATA}" | grep -i "^Current beta" | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' | head -n1)"
-            LEGACY="$(echo "${RAW_DATA}" | grep -i -A1 '>Legacy releases' | tail -1 | grep -oE '\b[0-9]+\.[0-9]+(\.[0-9]+)?\b' | head -n1)"
+          fetch() {
+            curl -fsSL --connect-timeout 10 --max-time 20 --retry 2 --retry-delay 5 "$1"
+          }
+
+          # Highest version among the API results matching the given filter
+          # (top-level "Success" is the result count, per-item "Success" is "1").
+          # The API's "Version" field is mangled (595.1040) and "DisplayVersion"
+          # is sometimes empty, so the version is taken from the download URL.
+          api_version() {
+            fetch "${NV_API}&$1" | jq -r --arg re "${VER_RE}" '
+              [ .IDS[]?.downloadInfo | select(.Success == "1" and ('"$2"'))
+                | ((.DownloadURL // "" | capture("/Linux-x86_64/(?<v>[^/]+)/").v) // .DisplayVersion // "")
+                | select(test($re)) ]
+              | sort_by(split(".") | map(tonumber)) | last // empty
+            ' || true
+          }
+
+          forum_version() {
+            case "$1" in
+              prb)    grep -m1 -i '^Current production branch release:' ;;
+              nfb)    grep -m1 -i '^Current new feature branch release:' ;;
+              beta)   grep -m1 -i '^Current beta release:' ;;
+              legacy) sed -n '/Legacy releases/,$p' | grep -m1 "^${LEGACY_BRANCH}\." ;;
+            esac <<< "${FORUM_DATA}" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || true
+          }
+
+          declare -A VER SRC
+          VER[prb]="$(api_version "psid=133&pfid=1075&beta=0&qnf=0&sort1=" '.IsBeta == "0" and .IsFeaturePreview == "0"')"
+          VER[nfb]="$(api_version "psid=133&pfid=1075&beta=null&qnf=1&sort1=1" '.IsBeta == "0" and .IsFeaturePreview == "1"')"
+          VER[beta]="$(api_version "psid=133&pfid=1075&beta=1&qnf=0&sort1=1" '.IsBeta == "1"')"
+          VER[legacy]="$(api_version "psid=122&pfid=944&beta=0&qnf=0&sort1=1&release=${LEGACY_BRANCH}" ".IsBeta == \"0\" and .Release == \"${LEGACY_BRANCH}\"")"
+
+          MISSING=""
+          for k in "${KEYS[@]}"; do
+            if [ -n "${VER[$k]}" ]; then SRC[$k]=api; else MISSING+=" $k"; fi
+          done
+
+          # Fill any branch the API didn't deliver from the forum announcement post
+          if [ -n "${MISSING}" ]; then
+            echo "::warning::NVIDIA driver API did not return:${MISSING}; falling back to forum"
+            # Strip BBCode tags ([b], [url=...]) so the patterns only see plain text
+            FORUM_DATA="$(fetch "${NV_FORUM}" | tr -d '\r' | sed -E 's/\[[^]]*\]//g' || true)"
+            for k in ${MISSING}; do
+              VER[$k]="$(forum_version "$k")"
+              [ -z "${VER[$k]}" ] || SRC[$k]=forum
+            done
           fi
 
-          if [ -z "${RAW_DATA}" ] || { [ -z "${PRB}" ] && [ -z "${NFB}" ]; }; then
-            echo "::error::Failed to fetch NVIDIA driver data from both sources"
+          if [ -z "${VER[prb]}" ] && [ -z "${VER[nfb]}" ]; then
+            echo "::error::Failed to determine NVIDIA driver versions from API and forum"
             exit 1
           fi
 
-          echo "prb=${PRB}" >> "$GITHUB_OUTPUT"
-          echo "nfb=${NFB}" >> "$GITHUB_OUTPUT"
-          echo "beta=${BETA}" >> "$GITHUB_OUTPUT"
-          echo "legacy=${LEGACY}" >> "$GITHUB_OUTPUT"
-          echo "Detected: PRB=${PRB} NFB=${NFB} BETA=${BETA} LEGACY=${LEGACY}"
+          # Never move a built branch backwards (e.g. a stale forum post)
+          declare -A BRANCH=([prb]=production [nfb]=newfeature [beta]=beta)
+          for k in "${!BRANCH[@]}"; do
+            cur="$(jq -r --arg br "${BRANCH[$k]}" '.branches[$br].driver_version // ""' build-matrix.json)"
+            if [ -n "${VER[$k]}" ] && [ -n "${cur}" ] && ! printf '%s\n' "${cur}" "${VER[$k]}" | sort -VC; then
+              echo "::warning::Ignoring ${k} ${VER[$k]} from ${SRC[$k]}: older than current ${cur}"
+              VER[$k]=""; SRC[$k]=rejected
+            fi
+          done
+
+          # Empty outputs mean "keep current" for the steps below
+          SUMMARY=""
+          for k in "${KEYS[@]}"; do
+            [ -n "${VER[$k]}" ] || [ "${SRC[$k]}" = rejected ] || echo "::warning::Could not determine NVIDIA ${k} version, keeping current"
+            echo "${k}=${VER[$k]}" >> "$GITHUB_OUTPUT"
+            SUMMARY+=" ${k^^}=${VER[$k]} (${SRC[$k]:-none})"
+          done
+          echo "Detected:${SUMMARY}"
 
       - name: Detect latest Unraid kernel versions
         id: kernels
