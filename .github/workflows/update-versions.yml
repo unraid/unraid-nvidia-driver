@@ -64,7 +64,7 @@ jobs:
         LIBNVIDIA="$(curl -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} -s https://api.github.com/repos/unraid/libnvidia-container/releases/latest | jq -r '.tag_name')"
 
         # Exit if no versions are returned 
-        if [ -z "${RAW_DATA}" ]; then
+        if [[ -z "${PRB}" && -z "${RAW_DATA}" ]]; then
           exit 1
         fi
 
