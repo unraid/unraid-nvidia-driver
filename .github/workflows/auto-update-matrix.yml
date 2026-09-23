@@ -138,9 +138,9 @@ jobs:
           CONTAINER_TOOLKIT=$(gh api repos/unraid/nvidia-container-toolkit/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
           LIBNVIDIA=$(gh api repos/unraid/libnvidia-container/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
 
-          # Ensure libnvidia-container matches toolkit version to prevent mismatches.
-          # Both repos release in sync; if versions differ, use the toolkit version
-          # and verify the matching libnvidia-container release exists.
+          # Prefer a matching libnvidia-container release when one exists.
+          # Toolkit patch releases can ship without one (e.g. toolkit 1.20.1
+          # with libnvidia-container 1.20.0); then keep the latest of each.
           if [ -n "${CONTAINER_TOOLKIT}" ] && [ -n "${LIBNVIDIA}" ] && [ "${CONTAINER_TOOLKIT}" != "${LIBNVIDIA}" ]; then
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
