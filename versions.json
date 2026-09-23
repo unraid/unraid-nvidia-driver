@@ -1,15 +1,15 @@
 {
   "branches": {
     "production": {
-      "current": "595.99.02",
-      "last_prb": "595.91.07"
+      "current": "595.104.02",
+      "last_prb": "595.99.02"
     },
     "newfeature": {
       "current": "615.71.09",
       "last_nfb": "610.57.04"
     },
     "beta": {
-      "current": "595.45.04\n470.256.02"
+      "current": "595.45.04"
     },
     "legacy": {
       "current": "580.178.04"
