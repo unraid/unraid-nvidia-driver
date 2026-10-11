@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
   <!ENTITY name      "nvidia-driver">
   <!ENTITY author    "unraid">
-  <!ENTITY version   "2026.06.07">
+  <!ENTITY version   "2026.08.01">
   <!ENTITY launch    "Settings/nvidia-driver">
   <!ENTITY gitURL    "https://github.com/&author;/unraid-&name;/raw/master">
   <!ENTITY pluginURL "&gitURL;/&name;.plg">
@@ -15,6 +15,9 @@
 <PLUGIN  name="&name;" author="limetech" version="&version;" launch="&launch;" pluginURL="&pluginURL;" min="6.9.0-beta31" support="https://forums.unraid.net/topic/98978-plugin-nvidia-driver/">
 
 <CHANGES>
+
+###2026.08.01
+- Temporarily add the host's 32-bit NVIDIA libraries and aliases when nvidia-ctk omits them
 
 ###2026.06.07
 - Fix for missing link
@@ -329,10 +332,168 @@ fi
 }
 
 generate_cdi() {
-  nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml >/dev/null 2>&amp;1
-  if ! grep -q '/usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so' /etc/cdi/nvidia.yaml ; then
-    sed -i -E 's#^([[:space:]]*)- \.\./libnvidia-allocator\.so\.1::/usr/lib64/gbm/nvidia-drm_gbm\.so[[:space:]]*$#\1- ../libnvidia-allocator.so.1::/usr/lib64/gbm/nvidia-drm_gbm.so\n\1- --link\n\1- /usr/lib64/libnvidia-allocator.so.1::/usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so#' /etc/cdi/nvidia.yaml
+  local cdi_path="${NVIDIA_CDI_PATH:-/etc/cdi/nvidia.yaml}"
+  local staging generated transformed compat_output compat_json folders_json
+  local library canonical candidate header folder scanned target
+  local -a compat_libraries=("")
+  local -a compat_folders=("")
+  local -a compat_targets=("")
+  local -a scanned_folders=("")
+
+  if ! mkdir -p "$(dirname "${cdi_path}")" ; then
+    echo "Failed to create NVIDIA CDI directory" &gt;&amp;2
+    return 1
   fi
+
+  staging="$(mktemp -d "${cdi_path}.stage.XXXXXX")" || return 1
+  generated="${staging}/generated.json"
+  transformed="${staging}/transformed.json"
+
+  if ! nvidia-ctk cdi generate --format=json --output="${generated}" &gt;/dev/null 2&gt;&amp;1 ; then
+    echo "Failed to generate NVIDIA CDI specification" &gt;&amp;2
+    rm -f "${generated}" "${transformed}"
+    rmdir "${staging}" 2&gt;/dev/null || true
+    return 1
+  fi
+
+  # nvidia-ctk currently omits compat32 libraries from CDI generation. Keep the
+  # additions idempotent so this becomes a no-op when the upstream fix lands:
+  # https://github.com/NVIDIA/nvidia-container-toolkit/pull/1968
+  if ! compat_output="$(nvidia-container-cli list --libraries --compat32 2&gt;/dev/null)" ; then
+    echo "Failed to discover NVIDIA compat32 libraries" &gt;&amp;2
+    rm -f "${generated}" "${transformed}"
+    rmdir "${staging}" 2&gt;/dev/null || true
+    return 1
+  fi
+
+  while IFS= read -r library ; do
+    [ -n "${library}" ] || continue
+
+    if [[ "${library}" != /* || ! -r "${library}" ]]; then
+      echo "Invalid NVIDIA compat32 library: ${library}" &gt;&amp;2
+      rm -f "${generated}" "${transformed}"
+      rmdir "${staging}" 2&gt;/dev/null || true
+      return 1
+    fi
+
+    header="$(od -An -t x1 -N5 "${library}" 2&gt;/dev/null | tr -d ' \n')"
+    if [ "${header}" == "7f454c4602" ]; then
+      continue
+    fi
+    if [ "${header}" != "7f454c4601" ]; then
+      echo "Invalid ELF library reported by NVIDIA compat32 discovery: ${library}" &gt;&amp;2
+      rm -f "${generated}" "${transformed}"
+      rmdir "${staging}" 2&gt;/dev/null || true
+      return 1
+    fi
+
+    if ! canonical="$(readlink -f "${library}" 2&gt;/dev/null)" || [ -z "${canonical}" ]; then
+      echo "Unable to resolve NVIDIA compat32 library: ${library}" &gt;&amp;2
+      rm -f "${generated}" "${transformed}"
+      rmdir "${staging}" 2&gt;/dev/null || true
+      return 1
+    fi
+
+    compat_libraries+=("${library}")
+    compat_folders+=("$(dirname "${library}")")
+    compat_targets+=("${canonical}")
+  done &lt;&lt;&lt; "${compat_output}"
+
+  for folder in "${compat_folders[@]}" ; do
+    [ -n "${folder}" ] || continue
+    scanned="false"
+    for target in "${scanned_folders[@]}" ; do
+      if [ "${folder}" == "${target}" ]; then
+        scanned="true"
+        break
+      fi
+    done
+    [ "${scanned}" == "false" ] || continue
+    scanned_folders+=("${folder}")
+
+    for candidate in "${folder}"/* ; do
+      [ -L "${candidate}" ] || continue
+      if ! canonical="$(readlink -f "${candidate}" 2&gt;/dev/null)" || [ -z "${canonical}" ]; then
+        continue
+      fi
+
+      for target in "${compat_targets[@]}" ; do
+        [ -n "${target}" ] || continue
+        if [ "${canonical}" == "${target}" ]; then
+          compat_libraries+=("${candidate}")
+          break
+        fi
+      done
+    done
+  done
+
+  compat_json="$(printf '%s\n' "${compat_libraries[@]}" | jq -Rsc 'split("\n") | map(select(length &gt; 0)) | unique | sort')"
+  folders_json="$(printf '%s\n' "${compat_folders[@]}" | jq -Rsc 'split("\n") | map(select(length &gt; 0)) | unique | sort')"
+
+  if ! jq -e --argjson compat "${compat_json}" --argjson folders "${folders_json}" '
+    def valid_spec:
+      .kind == "nvidia.com/gpu" and
+      (.devices | type == "array") and
+      (.containerEdits | type == "object") and
+      ((.containerEdits.mounts // []) | type == "array") and
+      ((.containerEdits.hooks // []) | type == "array") and
+      all(.containerEdits.hooks[]?; type == "object" and (.args | type == "array"));
+    def is_ldcache:
+      .args[0:2] == ["nvidia-cdi-hook", "update-ldcache"];
+    def has_folder($args; $folder):
+      [range(0; $args | length) as $index |
+        select($args[$index] == "--folder" and $args[$index + 1] == $folder)] |
+      length &gt; 0;
+    def add_folders($folders):
+      reduce $folders[] as $folder (.;
+        if has_folder(.args; $folder) then .
+        else .args += ["--folder", $folder]
+        end);
+    def gbm_source:
+      "../libnvidia-allocator.so.1::/usr/lib64/gbm/nvidia-drm_gbm.so";
+    def gbm_target:
+      "/usr/lib64/libnvidia-allocator.so.1::/usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so";
+
+    if (valid_spec | not) then error("invalid NVIDIA CDI specification") else . end |
+    .containerEdits.mounts = (.containerEdits.mounts // []) |
+    .containerEdits.hooks = (.containerEdits.hooks // []) |
+    reduce $compat[] as $path (.;
+      if any(.containerEdits.mounts[]?;
+        .hostPath == $path and .containerPath == $path) then .
+      else .containerEdits.mounts += [{
+        hostPath: $path,
+        containerPath: $path,
+        options: ["ro", "nosuid", "nodev", "rbind", "rprivate"]
+      }]
+      end) |
+    if ($folders | length) == 0 then .
+    elif any(.containerEdits.hooks[]; is_ldcache) then
+      .containerEdits.hooks |= map(if is_ldcache then add_folders($folders) else . end)
+    else error("NVIDIA CDI update-ldcache hook is missing")
+    end |
+    if any(.containerEdits.hooks[].args[]; . == gbm_target) then .
+    else
+      .containerEdits.hooks |= map(
+        if (.args | index(gbm_source)) != null then
+          .args += ["--link", gbm_target]
+        else . end)
+    end
+  ' "${generated}" &gt;"${transformed}" ; then
+    echo "Failed to augment NVIDIA CDI specification" &gt;&amp;2
+    rm -f "${generated}" "${transformed}"
+    rmdir "${staging}" 2&gt;/dev/null || true
+    return 1
+  fi
+
+  if ! mv -f "${transformed}" "${cdi_path}" ; then
+    echo "Failed to publish NVIDIA CDI specification" &gt;&amp;2
+    rm -f "${generated}" "${transformed}"
+    rmdir "${staging}" 2&gt;/dev/null || true
+    return 1
+  fi
+
+  rm -f "${generated}"
+  rmdir "${staging}" 2&gt;/dev/null || true
 }
 
 #Create settings file if not found
@@ -390,10 +551,10 @@ if ! modinfo nvidia -0 >/dev/null 2>&amp;1 ; then
   echo "-----------------Installing Nvidia ${OS}Driver Package v$(echo $LAT_PACKAGE | cut -d '-' -f2)-------------------"
   install > /dev/null
   activate
-  generate_cdi
+  generate_cdi || exit 1
 else
   activate
-  generate_cdi
+  generate_cdi || exit 1
 fi
 
 #Enable update check
